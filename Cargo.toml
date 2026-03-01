@@ -1,0 +1,39 @@
+[package]
+name = "seatracesrv"
+version = "0.1.0"
+edition = "2021"
+authors = ["Askibin"]
+
+[workspace]
+members = [
+    "crates/core-model",
+    "crates/connectors",
+    "crates/aggregator",
+    "crates/data-store",
+    "crates/delivery",
+    "crates/control-api"
+]
+
+[workspace.dependencies]
+tokio = { version = "1.37", features = ["full", "sync", "macros"] }
+serde = { version = "1.0", explicit-features = true, features = ["derive", "alloc"] }
+serde_json = "1.0"
+async-trait = "0.1"
+anyhow = "1.0"
+tracing = "0.1"
+h3o = "0.6"
+uuid = { version = "1.8", features = ["v4", "serde"] }
+tokio-tungstenite = "0.21"
+futures-util = "0.3"
+
+[dependencies]
+tokio.workspace = true
+tracing.workspace = true
+anyhow.workspace = true
+
+core-model = { path = "crates/core-model" }
+connectors = { path = "crates/connectors" }
+aggregator = { path = "crates/aggregator" }
+data-store = { path = "crates/data-store" }
+delivery = { path = "crates/delivery" }
+control-api = { path = "crates/control-api" }
