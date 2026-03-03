@@ -11,3 +11,12 @@ h3o.workspace = true
 uuid.workspace = true
 async-trait.workspace = true
 tokio.workspace = true
+progenitor-client = "0.8"
+progenitor-impl = "0.8"
+typify = "0.5"
+reqwest = "0.12"
+
+[build-dependencies]
+openapiv3 = "2.0"
+progenitor = "0.8"
+serde_yaml = "0.9"

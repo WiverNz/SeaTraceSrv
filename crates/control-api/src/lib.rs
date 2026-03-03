@@ -1,14 +1,19 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
+pub mod routes;
+pub mod state;
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+pub use state::AppState;
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
+use axum::{
+    routing::{get, post},
+    Router,
+};
+use routes::{control, realtime};
+
+pub fn create_router(state: AppState) -> Router {
+    Router::new()
+        .route("/health", get(control::get_health))
+        .route("/sources", get(control::get_sources))
+        .route("/snapshot", post(control::pull_snapshot))
+        .route("/realtime", get(realtime::realtime_handler))
+        .with_state(state)
 }

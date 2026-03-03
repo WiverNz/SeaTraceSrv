@@ -14,6 +14,7 @@ pub trait Broadcaster: Send + Sync {
 }
 
 /// Простейший in-memory бродкастер для локальной разработки и тестов
+#[derive(Debug)]
 pub struct InMemoryBroadcaster {
     // Канал на каждого клиента
     clients: RwLock<HashMap<String, broadcast::Sender<Event>>>,

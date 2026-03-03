@@ -1,0 +1,50 @@
+asyncapi: 3.0.0
+info:
+  title: SeaTraceSrv Realtime WebSocket
+  version: 1.0.0
+  description: WebSocket & WebTransport protocol for Android clients
+channels:
+  realtime:
+    address: '/ws'
+    messages:
+      publish:
+        $ref: '#/components/messages/ClientMessage'
+      subscribe:
+        $ref: '#/components/messages/ServerMessage'
+
+components:
+  messages:
+    ClientMessage:
+      name: ClientMessage
+      title: Client messages to Server
+      payload:
+        type: object
+        required: [type, payload]
+        discriminator:
+          propertyName: type
+        properties:
+          type:
+            type: string
+            enum: [SubscribeArea, UnsubscribeArea]
+          request_id:
+            type: string
+            description: Optional ID for correlation
+          payload:
+            type: object
+            # Details omitted for brevity
+
+    ServerMessage:
+      name: ServerMessage
+      title: Server push messages to Client
+      payload:
+        type: object
+        required: [type, payload]
+        discriminator:
+          propertyName: type
+        properties:
+          type:
+            type: string
+            enum: [AreaSnapshot, AreaUpdate, SystemError]
+          payload:
+            type: object
+            # Details omitted for brevity

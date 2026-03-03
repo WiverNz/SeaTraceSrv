@@ -1,0 +1,215 @@
+openapi: 3.0.3
+info:
+  title: SeaTraceSrv Control API
+  description: HTTP API for SeaTraceSrv control plane (sources management, health, pulling snapshots)
+  version: 1.0.0
+servers:
+  - url: http://localhost:8080/api/v1
+paths:
+  /health:
+    get:
+      summary: Get service health
+      operationId: getHealth
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+  /sources:
+    get:
+      summary: List all active and defined sources
+      operationId: getSources
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SourceStatus'
+  /snapshot:
+    post:
+      summary: Request state snapshot for specific cells without WS subscription
+      operationId: pullSnapshot
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SnapshotRequest'
+      responses:
+        '200':
+          description: State snapshot returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SnapshotResponse'
+
+components:
+  schemas:
+    HealthStatus:
+      type: string
+      enum: [Ok, Degraded, Down]
+      
+    HealthResponse:
+      type: object
+      required: [status, components]
+      properties:
+        status:
+          type: string
+        components:
+          type: object
+          additionalProperties:
+            type: string
+
+    SourceStatus:
+      type: object
+      required: [id, health, quality_score, active]
+      properties:
+        id:
+          type: string
+        health:
+          $ref: '#/components/schemas/HealthStatus'
+        quality_score:
+          type: number
+          format: float
+        active:
+          type: boolean
+
+    SnapshotRequest:
+      type: object
+      required: [h3_cells]
+      properties:
+        h3_cells:
+          type: array
+          items:
+            type: integer
+            format: uint64
+          description: List of H3 cell indexes (usually uint64 represented as int64 or string, here int64 for protobuf mapping)
+        categories:
+          type: array
+          items:
+            type: string
+          description: Optional event categories filter
+
+    SnapshotResponse:
+      type: object
+      required: [events]
+      properties:
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/Event'
+
+    Event:
+      type: object
+      required: [event_id, h3_index, timestamp, source, confidence, payload]
+      properties:
+        event_id:
+          type: string
+        h3_index:
+          type: integer
+          format: uint64
+        timestamp:
+          type: integer
+          format: int64
+        source:
+          type: string
+        confidence:
+          type: number
+          format: float
+        payload:
+          $ref: '#/components/schemas/EventPayload'
+
+    EventPayload:
+      discriminator:
+        propertyName: type
+      oneOf:
+        - $ref: '#/components/schemas/EventPayloadVesselPosition'
+        - $ref: '#/components/schemas/EventPayloadWeatherAlert'
+        - $ref: '#/components/schemas/EventPayloadSeaPhenomenon'
+        - $ref: '#/components/schemas/EventPayloadIncident'
+      # Note: progenitor has specific ways to map discriminators, usually anyOf/oneOf works
+      # or we define them explicitly
+      # Let's define the variants
+      # Wait, typify handles oneOf with discriminator by creating a Rust Enum.
+
+    EventPayloadVesselPosition:
+      type: object
+      required: [type, mmsi, lat, lon]
+      properties:
+        type:
+          type: string
+          enum: [VesselPosition]
+        mmsi:
+          type: integer
+        lat:
+          type: number
+          format: double
+        lon:
+          type: number
+          format: double
+        sog:
+          type: number
+          format: float
+        cog:
+          type: number
+          format: float
+
+    EventPayloadWeatherAlert:
+      type: object
+      required: [type, kind, severity, polygon]
+      properties:
+        type:
+          type: string
+          enum: [WeatherAlert]
+        kind:
+          type: string
+        severity:
+          type: string
+        polygon:
+          type: array
+          items:
+            type: array
+            items:
+              type: number
+              format: double
+
+    EventPayloadSeaPhenomenon:
+      type: object
+      required: [type, kind, lat, lon]
+      properties:
+        type:
+          type: string
+          enum: [SeaPhenomenon]
+        kind:
+          type: string
+        evidence:
+          type: string
+        lat:
+          type: number
+          format: double
+        lon:
+          type: number
+          format: double
+
+    EventPayloadIncident:
+      type: object
+      required: [type, kind, lat, lon]
+      properties:
+        type:
+          type: string
+          enum: [Incident]
+        kind:
+          type: string
+        vessel_mmsi:
+          type: integer
+        lat:
+          type: number
+          format: double
+        lon:
+          type: number
+          format: double

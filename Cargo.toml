@@ -12,7 +12,7 @@ members = [
     "crates/data-store",
     "crates/delivery",
     "crates/control-api"
-]
+, "crates/integration-tests"]
 
 [workspace.dependencies]
 tokio = { version = "1.37", features = ["full", "sync", "macros"] }
