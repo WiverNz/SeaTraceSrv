@@ -21,15 +21,19 @@ serde_json = "1.0"
 async-trait = "0.1"
 anyhow = "1.0"
 tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 h3o = "0.6"
 uuid = { version = "1.8", features = ["v4", "serde"] }
-tokio-tungstenite = "0.21"
+tokio-tungstenite = { version = "0.21", features = ["native-tls"] }
 futures-util = "0.3"
+axum = { version = "0.8", features = ["ws"] }
 
 [dependencies]
 tokio.workspace = true
 tracing.workspace = true
+tracing-subscriber.workspace = true
 anyhow.workspace = true
+axum.workspace = true
 
 core-model = { path = "crates/core-model" }
 connectors = { path = "crates/connectors" }

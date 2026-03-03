@@ -4,3 +4,16 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+async-trait.workspace = true
+futures-util.workspace = true
+tokio-tungstenite.workspace = true
+h3o.workspace = true
+uuid.workspace = true
+
+core-model = { path = "../core-model" }
+delivery    = { path = "../delivery" }
