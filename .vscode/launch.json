@@ -1,0 +1,153 @@
+{
+    // https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        // ── Run ──────────────────────────────────────────────────────────────
+        {
+            "name": "Run seatracesrv",
+            "type": "lldb",
+            "request": "launch",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=seatracesrv",
+                    "--package=seatracesrv"
+                ]
+            },
+            "program": "${workspaceFolder}/target/debug/seatracesrv",
+            "args": [],
+            "envFile": "${workspaceFolder}/.env"
+        },
+        // ── Debug ─────────────────────────────────────────────────────────────
+        {
+            "name": "Debug seatracesrv",
+            "type": "lldb",
+            "request": "launch",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=seatracesrv",
+                    "--package=seatracesrv"
+                ]
+            },
+            "program": "${workspaceFolder}/target/debug/seatracesrv",
+            "args": [],
+            "envFile": "${workspaceFolder}/.env",
+            "sourceLanguages": [
+                "rust"
+            ]
+        },
+        // ── Integration Tests ─────────────────────────────────────────────────
+        {
+            "name": "Test: BDD subscriptions (cucumber)",
+            "type": "lldb",
+            "request": "launch",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--test=cucumber",
+                    "--package=integration-tests"
+                ]
+            },
+            "args": [
+                "--nocapture"
+            ]
+        },
+        {
+            "name": "Test: BDD WebSocket API (ws_cucumber)",
+            "type": "lldb",
+            "request": "launch",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--test=ws_cucumber",
+                    "--package=integration-tests"
+                ]
+            },
+            "args": [
+                "--nocapture"
+            ]
+        },
+        {
+            "name": "Test: All integration-tests",
+            "type": "lldb",
+            "request": "launch",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--package=integration-tests"
+                ]
+            },
+            "args": [
+                "--nocapture"
+            ]
+        },
+        // ── Per-crate unit tests ──────────────────────────────────────────────
+        {
+            "name": "Test: core-model",
+            "type": "lldb",
+            "request": "launch",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--package=core-model"
+                ]
+            }
+        },
+        {
+            "name": "Test: connectors",
+            "type": "lldb",
+            "request": "launch",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--package=connectors"
+                ]
+            }
+        },
+        {
+            "name": "Test: delivery",
+            "type": "lldb",
+            "request": "launch",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--package=delivery"
+                ]
+            }
+        },
+        {
+            "name": "Test: aggregator",
+            "type": "lldb",
+            "request": "launch",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--package=aggregator"
+                ]
+            }
+        },
+        {
+            "name": "Test: data-store",
+            "type": "lldb",
+            "request": "launch",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--package=data-store"
+                ]
+            }
+        },
+        {
+            "name": "Test: control-api",
+            "type": "lldb",
+            "request": "launch",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--package=control-api"
+                ]
+            }
+        }
+    ]
+}
