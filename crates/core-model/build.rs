@@ -1,6 +1,6 @@
 use std::env;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 fn main() {
     let spec_path = "../../api-contracts/openapi.yaml";

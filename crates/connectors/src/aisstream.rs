@@ -175,23 +175,45 @@ impl AisStreamConnector {
         info!("Subscription sent, streaming messages…");
         backoff_reset();
 
+        let mut msg_count = 0u64;
         while let Some(raw) = ws.next().await {
             let raw = raw.context("WebSocket receive error")?;
 
             match raw {
                 Message::Text(text) => {
+                    msg_count += 1;
+                    if msg_count <= 3 {
+                        debug!("Received text message #{}: {} bytes", msg_count, text.len());
+                    }
                     if let Err(e) = self.handle_message(&text).await {
                         debug!("Failed to handle AIS message: {:#}", e);
                     }
                 }
+                Message::Binary(data) => {
+                    // AISStream may send JSON as binary frames
+                    msg_count += 1;
+                    if msg_count <= 3 {
+                        debug!("Received binary message #{}: {} bytes", msg_count, data.len());
+                    }
+                    if let Ok(text) = String::from_utf8(data) {
+                        if let Err(e) = self.handle_message(&text).await {
+                            debug!("Failed to handle AIS message: {:#}", e);
+                        }
+                    } else {
+                        debug!("Received non-UTF8 binary message");
+                    }
+                }
                 Message::Ping(data) => {
+                    debug!("Received Ping, sending Pong");
                     ws.send(Message::Pong(data)).await.ok();
                 }
                 Message::Close(_) => {
                     info!("AISStream sent Close frame");
                     break;
                 }
-                _ => {}
+                _ => {
+                    debug!("Received other message type: {:?}", raw);
+                }
             }
         }
 

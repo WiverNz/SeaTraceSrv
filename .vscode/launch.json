@@ -69,6 +69,23 @@
             ]
         },
         {
+            "name": "Test: E2E Real AISStream Data",
+            "type": "lldb",
+            "request": "launch",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--test=e2e_real_data",
+                    "--package=integration-tests"
+                ]
+            },
+            "args": [
+                "--ignored",
+                "--nocapture"
+            ],
+            "envFile": "${workspaceFolder}/.env"
+        },
+        {
             "name": "Test: All integration-tests",
             "type": "lldb",
             "request": "launch",
