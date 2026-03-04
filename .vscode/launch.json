@@ -37,6 +37,31 @@
                 "rust"
             ]
         },
+        // ── Python Client ────────────────────────────────────────────────────
+        {
+            "name": "Python Client: Stream",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/scripts/client.py",
+            "args": ["stream", "--host", "asgard.fritz.box", "--port", "8080"],
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Python Client: Stream (localhost)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/scripts/client.py",
+            "args": ["stream", "--host", "localhost", "--port", "8080"],
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Python Client: Health Check",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/scripts/client.py",
+            "args": ["health", "--host", "asgard.fritz.box", "--port", "8080"],
+            "console": "integratedTerminal"
+        },
         // ── Integration Tests ─────────────────────────────────────────────────
         {
             "name": "Test: BDD subscriptions (cucumber)",

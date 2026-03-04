@@ -22,3 +22,10 @@ target
 
 # Environment secrets — copy .env.example → .env and fill in your values
 .env
+
+# Python
+*.pyc
+__pycache__/
+*.pyo
+.venv/
+venv/
