@@ -29,3 +29,14 @@ __pycache__/
 *.pyo
 .venv/
 venv/
+
+# Android SDK
+seatrace-sdk-android/.gradle/
+seatrace-sdk-android/build/
+seatrace-sdk-android/*/build/
+seatrace-sdk-android/local.properties
+seatrace-sdk-android/.idea/
+seatrace-sdk-android/*.iml
+seatrace-sdk-android/captures/
+seatrace-sdk-android/.externalNativeBuild/
+seatrace-sdk-android/.cxx/

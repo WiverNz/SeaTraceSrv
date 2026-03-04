@@ -1,0 +1,12 @@
+#!/bin/bash
+
+# Gradle wrapper script
+GRADLE_USER_HOME="${GRADLE_USER_HOME:-$HOME/.gradle}"
+
+# Use system gradle or download wrapper
+if command -v gradle &> /dev/null; then
+    exec gradle "$@"
+else
+    echo "Gradle not found. Please install Gradle or use Android Studio."
+    exit 1
+fi

@@ -124,6 +124,34 @@
                 "--nocapture"
             ]
         },
+        // ── Android SDK Tests ─────────────────────────────────────────────────
+        {
+            "name": "Android SDK: Integration Tests",
+            "type": "node",
+            "request": "launch",
+            "runtimeExecutable": "${workspaceFolder}/seatrace-sdk-android/gradlew",
+            "runtimeArgs": [":sdk:connectedAndroidTest"],
+            "cwd": "${workspaceFolder}/seatrace-sdk-android",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Android SDK: Build",
+            "type": "node",
+            "request": "launch",
+            "runtimeExecutable": "${workspaceFolder}/seatrace-sdk-android/gradlew",
+            "runtimeArgs": [":sdk:assembleDebug"],
+            "cwd": "${workspaceFolder}/seatrace-sdk-android",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Android SDK: Unit Tests",
+            "type": "node",
+            "request": "launch",
+            "runtimeExecutable": "${workspaceFolder}/seatrace-sdk-android/gradlew",
+            "runtimeArgs": [":sdk:testDebugUnitTest"],
+            "cwd": "${workspaceFolder}/seatrace-sdk-android",
+            "console": "integratedTerminal"
+        },
         // ── Per-crate unit tests ──────────────────────────────────────────────
         {
             "name": "Test: core-model",
