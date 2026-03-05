@@ -9,6 +9,8 @@ Real-time maritime vessel tracking server that ingests AIS (Automatic Identifica
 - **Location-based subscriptions** - clients subscribe to specific geographic areas (H3 cells)
 - **WebSocket streaming** for real-time event delivery
 - **HTTP API** for health checks and snapshots
+- **Python client library & CLI** for scripting and testing
+- **Android SDK** for mobile integration
 
 ## Architecture
 
@@ -38,6 +40,13 @@ Real-time maritime vessel tracking server that ingests AIS (Automatic Identifica
 | `aggregator` | Multi-source aggregation (placeholder) |
 | `data-store` | Persistence layer (placeholder) |
 | `integration-tests` | Cucumber BDD tests |
+
+### Client SDKs
+
+| Path | Description |
+|------|-------------|
+| `scripts/` | Python client library and CLI tool |
+| `seatrace-sdk-android/` | Android SDK (Kotlin, Coroutines/Flow) |
 
 ## Prerequisites
 
@@ -127,6 +136,88 @@ Real-time maritime vessel tracking server that ingests AIS (Automatic Identifica
 | `SeaPhenomenon` | Sea phenomena observations (planned) |
 | `Incident` | Maritime incident reports (planned) |
 
+## Python Client
+
+The `scripts/` directory contains a Python client library and CLI for connecting to SeaTraceSrv.
+
+### Installation
+
+```bash
+pip install websockets httpx
+```
+
+### CLI Usage
+
+```bash
+# Stream all vessel events (default host: asgard.fritz.box:8080)
+python scripts/client.py stream
+
+# Stream events for specific H3 cells
+python scripts/client.py stream --cells 608431123508232191
+
+# Connect to a specific host/port
+python scripts/client.py --host localhost --port 8080 stream
+
+# Stop after N events
+python scripts/client.py stream --max-events 50 --verbose
+
+# Check service health
+python scripts/client.py health
+
+# List active data sources
+python scripts/client.py sources
+```
+
+### Library Usage
+
+```python
+from seatrace_client import RealtimeClient, SeaTraceClient
+
+# WebSocket streaming
+async with RealtimeClient("localhost", 8080) as client:
+    await client.subscribe([])          # subscribe to all cells
+    async for event in client:
+        print(event.payload)
+
+# HTTP API
+with SeaTraceClient("localhost", 8080) as client:
+    health = client.get_health()
+    sources = client.get_sources()
+```
+
+## Android SDK
+
+The `seatrace-sdk-android/` directory contains a Kotlin Android SDK with Coroutines/Flow-based streaming.
+
+See [seatrace-sdk-android/README.md](seatrace-sdk-android/README.md) for full documentation.
+
+### Quick Start
+
+```kotlin
+val client = SeaTraceClient(
+    endpoint = "wss://your-server/realtime"
+)
+client.connect()
+
+lifecycleScope.launch {
+    client.vesselsFlow.collect { update ->
+        Log.d("SeaTrace", "Vessel ${update.position.mmsi}")
+    }
+}
+```
+
+### Building the SDK
+
+```bash
+cd seatrace-sdk-android
+
+# Build debug AAR
+./gradlew :sdk:assembleDebug
+
+# Run unit tests
+./gradlew :sdk:testDebugUnitTest
+```
+
 ## Docker
 
 Build and run with Docker:
@@ -161,6 +252,13 @@ cargo test -p integration-tests --test ws_cucumber
 API specifications are defined in `api-contracts/`:
 - `openapi.yaml` - REST API specification (used for code generation)
 - `asyncapi.yaml` - WebSocket message protocol specification
+
+## VS Code
+
+The repository includes VS Code launch configurations (`.vscode/`) for:
+- Running and debugging the server
+- Running integration tests
+- Android SDK build and test tasks
 
 ## License
 
