@@ -3,7 +3,9 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.serialization)
     `maven-publish`
-    id("org.openapi.generator") version "7.4.0"
+    // OpenAPI generator disabled - using hand-written models in sdk/model/Models.kt
+    // The generator creates non-sealed interfaces with @Serializable which kotlinx.serialization doesn't support
+    // id("org.openapi.generator") version "7.4.0"
 }
 
 android {
@@ -48,13 +50,6 @@ android {
         buildConfig = true
     }
 
-    // Add generated sources
-    sourceSets {
-        getByName("main") {
-            kotlin.srcDir("$buildDir/generated/openapi/src/main/kotlin")
-        }
-    }
-
     publishing {
         singleVariant("release") {
             withSourcesJar()
@@ -63,36 +58,33 @@ android {
     }
 }
 
-// OpenAPI Generator configuration
-openApiGenerate {
-    generatorName.set("kotlin")
-    inputSpec.set("$rootDir/../api-contracts/openapi.yaml")
-    outputDir.set("$buildDir/generated/openapi")
-    packageName.set("io.seatrace.sdk.generated")
-    modelPackage.set("io.seatrace.sdk.generated.model")
-    apiPackage.set("io.seatrace.sdk.generated.api")
-
-    configOptions.set(mapOf(
-        "dateLibrary" to "java8",
-        "serializationLibrary" to "kotlinx_serialization",
-        "enumPropertyNaming" to "UPPERCASE",
-        "collectionType" to "list",
-        "generateOneOfAnyOfWrappers" to "false",
-        "omitGradleWrapper" to "true"
-    ))
-
-    // Only generate models, not full client
-    globalProperties.set(mapOf(
-        "models" to "",
-        "modelDocs" to "false",
-        "modelTests" to "false",
-        "apis" to "false"
-    ))
-}
-
-tasks.named("preBuild") {
-    dependsOn("openApiGenerate")
-}
+// OpenAPI Generator configuration disabled - using hand-written models
+// See sdk/src/main/kotlin/io/seatrace/sdk/model/Models.kt for data models
+// To re-enable, uncomment the plugin above and the configuration below:
+//
+// openApiGenerate {
+//     generatorName.set("kotlin")
+//     inputSpec.set("$rootDir/../api-contracts/openapi.yaml")
+//     outputDir.set("$buildDir/generated/openapi")
+//     packageName.set("io.seatrace.sdk.generated")
+//     modelPackage.set("io.seatrace.sdk.generated.model")
+//     apiPackage.set("io.seatrace.sdk.generated.api")
+//     configOptions.set(mapOf(
+//         "dateLibrary" to "java8",
+//         "serializationLibrary" to "kotlinx_serialization",
+//         "enumPropertyNaming" to "UPPERCASE",
+//         "collectionType" to "list",
+//         "generateOneOfAnyOfWrappers" to "false",
+//         "omitGradleWrapper" to "true"
+//     ))
+//     globalProperties.set(mapOf(
+//         "models" to "",
+//         "modelDocs" to "false",
+//         "modelTests" to "false",
+//         "apis" to "false"
+//     ))
+// }
+// tasks.named("preBuild") { dependsOn("openApiGenerate") }
 
 dependencies {
     // Kotlin
