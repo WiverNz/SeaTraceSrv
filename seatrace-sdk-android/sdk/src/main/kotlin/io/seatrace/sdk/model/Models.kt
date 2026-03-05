@@ -1,5 +1,6 @@
 package io.seatrace.sdk.model
 
+import io.seatrace.sdk.model.enrichment.WeatherEnrichment
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -212,7 +213,13 @@ data class Event(
     /** Confidence score 0.0-1.0 */
     val confidence: Float,
     /** Event payload - use payloadAs<T>() to access typed data */
-    val payload: EventPayloadRaw
+    val payload: EventPayloadRaw,
+    /**
+     * Weather enrichment — present when the client subscribed with
+     * [io.seatrace.sdk.model.enrichment.Lod.WEATHER_CURRENT] or
+     * [io.seatrace.sdk.model.enrichment.Lod.WEATHER_HOURLY].
+     */
+    val weather: WeatherEnrichment? = null,
 ) {
     /** Convert timestamp to Java Instant */
     val instant: java.time.Instant
@@ -225,11 +232,18 @@ data class Event(
 
 /**
  * Typed update wrapper for vessel positions.
+ *
+ * [weather] is a convenience accessor — it is non-null when the client
+ * subscribed with a weather LOD. New enrichment types follow the same pattern:
+ * add a property that delegates to [event].
  */
 data class VesselUpdate(
     val event: Event,
-    val position: VesselPosition
+    val position: VesselPosition,
 ) {
+    /** Weather enrichment if a weather LOD was requested, null otherwise. */
+    val weather: WeatherEnrichment? get() = event.weather
+
     override fun toString(): String = "VesselUpdate(${position.mmsi} @ ${event.formattedTime})"
 }
 

@@ -1,5 +1,7 @@
 package io.seatrace.sdk.subscription
 
+import io.seatrace.sdk.model.enrichment.Lod
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import java.util.UUID
 
@@ -8,14 +10,10 @@ import java.util.UUID
  */
 @Serializable
 data class BBox(
-    /** Western longitude boundary */
     val west: Double,
-    /** Southern latitude boundary */
     val south: Double,
-    /** Eastern longitude boundary */
     val east: Double,
-    /** Northern latitude boundary */
-    val north: Double
+    val north: Double,
 ) {
     init {
         require(west in -180.0..180.0) { "West longitude must be between -180 and 180" }
@@ -26,27 +24,20 @@ data class BBox(
     }
 
     companion object {
-        /** Worldwide bounding box */
         val World = BBox(west = -180.0, south = -90.0, east = 180.0, north = 90.0)
     }
 }
 
 /**
- * Represents an active subscription.
+ * Handle returned from every `subscribe*` call.
+ * Call [cancel] to remove the subscription.
  */
 data class SubscriptionHandle(
-    /** Unique subscription identifier */
     val id: String = UUID.randomUUID().toString(),
-    /** Subscription type */
     val type: SubscriptionType,
-    /** Subscription parameters */
     val params: SubscriptionParams,
-    /** Whether subscription is currently active */
-    var isActive: Boolean = true
+    var isActive: Boolean = true,
 ) {
-    /**
-     * Cancel this subscription.
-     */
     internal var onCancel: (() -> Unit)? = null
 
     fun cancel() {
@@ -55,62 +46,78 @@ data class SubscriptionHandle(
     }
 }
 
-/**
- * Types of subscriptions available.
- */
+/** High-level subscription categories. */
 enum class SubscriptionType {
     VESSELS,
     EVENTS,
     WEATHER,
     ANIMALS,
-    ALL
+    ALL,
 }
 
 /**
- * Parameters for a subscription.
+ * Parameters carried by each subscription.
+ *
+ * Every subclass exposes a [lod] list that is forwarded verbatim in the
+ * WebSocket subscribe message. To request a new enrichment type, pass the
+ * corresponding [Lod] variant — no other client code needs to change.
  */
 sealed class SubscriptionParams {
-    /** Subscribe to vessel positions */
+    abstract val lod: List<Lod>
+
+    /** Subscribe to vessel positions. */
     data class Vessels(
         val bbox: BBox? = null,
         val h3Cells: List<Long>? = null,
         val minConfidence: Float = 0.0f,
-        val mmsiFilter: List<Long>? = null
+        val mmsiFilter: List<Long>? = null,
+        override val lod: List<Lod> = listOf(Lod.VESSELS),
     ) : SubscriptionParams()
 
-    /** Subscribe to events */
+    /** Subscribe to general events (sea phenomena, incidents). */
     data class Events(
         val bbox: BBox? = null,
         val h3Cells: List<Long>? = null,
         val categories: List<String>? = null,
-        val minConfidence: Float = 0.0f
+        val minConfidence: Float = 0.0f,
+        override val lod: List<Lod> = listOf(Lod.VESSELS),
     ) : SubscriptionParams()
 
-    /** Subscribe to weather alerts */
+    /** Subscribe to weather alerts. */
     data class Weather(
         val bbox: BBox? = null,
         val h3Cells: List<Long>? = null,
-        val severities: List<String>? = null
+        val severities: List<String>? = null,
+        override val lod: List<Lod> = listOf(Lod.VESSELS),
     ) : SubscriptionParams()
 
-    /** Subscribe to animal sightings */
+    /** Subscribe to animal sightings. */
     data class Animals(
         val bbox: BBox? = null,
         val h3Cells: List<Long>? = null,
         val species: List<String>? = null,
-        val minConfidence: Float = 0.0f
+        val minConfidence: Float = 0.0f,
+        override val lod: List<Lod> = listOf(Lod.VESSELS),
     ) : SubscriptionParams()
 
-    /** Subscribe to all events (wildcard) */
+    /** Wildcard subscription — receives all events. */
     data class All(
-        val h3Cells: List<Long> = emptyList()
+        val h3Cells: List<Long> = emptyList(),
+        override val lod: List<Lod> = listOf(Lod.VESSELS),
     ) : SubscriptionParams()
 }
 
 /**
- * Message sent to server to create subscription.
+ * Wire message sent to the server to establish a subscription.
+ *
+ * Serialised to JSON:
+ * ```json
+ * { "h3_cells": [608431123508232191], "lod": ["weather_current"] }
+ * ```
  */
 @Serializable
 internal data class SubscriptionMessage(
-    val h3_cells: List<Long> = emptyList()
+    @SerialName("h3_cells")
+    val h3Cells: List<Long> = emptyList(),
+    val lod: List<Lod> = emptyList(),
 )

@@ -4,33 +4,33 @@ SeaTraceSrv WebSocket Realtime Client
 Provides real-time streaming of vessel position events via WebSocket.
 """
 
-import asyncio
 import json
 from typing import AsyncIterator, Callable, Optional, Awaitable
 
 import websockets
 from websockets.client import WebSocketClientProtocol
 
-from .models import Event
+from .models import Event, Lod
 
 
 class RealtimeClient:
     """
     WebSocket client for real-time event streaming.
 
-    Usage:
-        # Async iterator pattern
-        async with RealtimeClient("asgard.fritz.box", 8080) as client:
-            await client.subscribe([])  # Empty list = all events
+    Usage (async iterator):
+        async with RealtimeClient("localhost", 8080) as client:
+            await client.subscribe(lod=[Lod.WEATHER_CURRENT])
             async for event in client:
                 print(event)
+                if event.weather:
+                    print("  →", event.weather.current)
 
-        # Callback pattern
+    Usage (callback):
         async def on_event(event: Event):
-            print(f"Received: {event}")
+            print(event)
 
-        client = RealtimeClient("asgard.fritz.box", 8080)
-        await client.stream(on_event)
+        client = RealtimeClient("localhost", 8080)
+        await client.stream(on_event, lod=[Lod.WEATHER_CURRENT])
     """
 
     def __init__(
@@ -39,14 +39,6 @@ class RealtimeClient:
         port: int = 8080,
         use_wss: bool = False,
     ):
-        """
-        Initialize the realtime client.
-
-        Args:
-            host: Server hostname
-            port: Server port
-            use_wss: Use WSS (secure WebSocket) instead of WS
-        """
         self.host = host
         self.port = port
         scheme = "wss" if use_wss else "ws"
@@ -73,20 +65,35 @@ class RealtimeClient:
             self._ws = None
             self._subscribed = False
 
-    async def subscribe(self, h3_cells: Optional[list[int]] = None):
+    async def subscribe(
+        self,
+        h3_cells: Optional[list[int]] = None,
+        lod: Optional[list[Lod]] = None,
+    ):
         """
-        Subscribe to events for specific H3 cells.
+        Subscribe to events.
 
         Args:
-            h3_cells: List of H3 cell indices to subscribe to.
+            h3_cells: H3 cell indices to subscribe to.
                       Empty list or None = subscribe to ALL events (wildcard).
+            lod:      Detail levels to request. Controls which enrichment data
+                      is attached to each event.
+
+                      Lod.WEATHER_CURRENT — adds current temperature, wind,
+                          humidity at the vessel position (Open-Meteo).
+                      Lod.WEATHER_HOURLY  — adds 24-hour hourly forecast
+                          (implies WEATHER_CURRENT).
+
+                      Future: Lod.WATER_CONDITIONS, Lod.DEPTH, Lod.WATER_CURRENTS
         """
         if not self._ws:
             raise RuntimeError("Not connected. Call connect() first.")
 
-        cells = h3_cells if h3_cells is not None else []
-        subscription = {"h3_cells": cells}
-        await self._ws.send(json.dumps(subscription))
+        msg: dict = {"h3_cells": h3_cells or []}
+        if lod:
+            msg["lod"] = [l.value for l in lod]
+
+        await self._ws.send(json.dumps(msg))
         self._subscribed = True
 
     async def __aiter__(self) -> AsyncIterator[Event]:
@@ -100,20 +107,11 @@ class RealtimeClient:
             try:
                 data = json.loads(message)
                 yield Event.from_dict(data)
-            except (json.JSONDecodeError, KeyError, ValueError) as e:
-                # Skip malformed messages
+            except (json.JSONDecodeError, KeyError, ValueError):
                 continue
 
     async def recv(self) -> Event:
-        """
-        Receive a single event.
-
-        Returns:
-            The next Event from the stream
-
-        Raises:
-            RuntimeError: If not connected or subscribed
-        """
+        """Receive a single event."""
         if not self._ws:
             raise RuntimeError("Not connected. Call connect() first.")
         if not self._subscribed:
@@ -125,27 +123,28 @@ class RealtimeClient:
                 data = json.loads(message)
                 return Event.from_dict(data)
             except (json.JSONDecodeError, KeyError, ValueError):
-                # Skip malformed messages, try next
                 continue
 
     async def stream(
         self,
         callback: Callable[[Event], Awaitable[None]],
         h3_cells: Optional[list[int]] = None,
+        lod: Optional[list[Lod]] = None,
         max_events: Optional[int] = None,
     ):
         """
         Stream events with a callback function.
 
         Args:
-            callback: Async function called for each event
-            h3_cells: H3 cells to subscribe to (None/empty = all)
-            max_events: Maximum events to receive (None = unlimited)
+            callback:   Async function called for each event.
+            h3_cells:   H3 cells to subscribe to (None/empty = all).
+            lod:        Detail levels to request (see subscribe()).
+            max_events: Stop after receiving this many events (None = unlimited).
         """
         if not self._ws:
             await self.connect()
 
-        await self.subscribe(h3_cells)
+        await self.subscribe(h3_cells, lod)
 
         count = 0
         async for event in self:
@@ -159,16 +158,17 @@ async def stream_events(
     host: str = "localhost",
     port: int = 8080,
     h3_cells: Optional[list[int]] = None,
+    lod: Optional[list[Lod]] = None,
     use_wss: bool = False,
 ) -> AsyncIterator[Event]:
     """
-    Convenience function for streaming events.
+    Convenience async generator for streaming events.
 
     Usage:
-        async for event in stream_events("asgard.fritz.box", 8080):
+        async for event in stream_events("localhost", 8080, lod=[Lod.WEATHER_CURRENT]):
             print(event)
     """
     async with RealtimeClient(host, port, use_wss) as client:
-        await client.subscribe(h3_cells)
+        await client.subscribe(h3_cells, lod)
         async for event in client:
             yield event

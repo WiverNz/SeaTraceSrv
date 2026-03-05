@@ -1,50 +1,243 @@
 asyncapi: 3.0.0
 info:
   title: SeaTraceSrv Realtime WebSocket
-  version: 1.0.0
-  description: WebSocket & WebTransport protocol for Android clients
+  version: 1.1.0
+  description: >
+    WebSocket protocol for real-time maritime vessel tracking.
+    Clients connect to `/realtime`, send one SubscribeMessage to configure
+    their subscription, then receive a stream of EnrichedEvent messages.
+
 channels:
   realtime:
-    address: '/ws'
+    address: /realtime
+    description: >
+      Single bidirectional WebSocket channel. The client sends exactly one
+      SubscribeMessage after connecting. The server then pushes EnrichedEvent
+      messages until the connection is closed.
     messages:
-      publish:
-        $ref: '#/components/messages/ClientMessage'
       subscribe:
-        $ref: '#/components/messages/ServerMessage'
+        $ref: '#/components/messages/SubscribeMessage'
+      event:
+        $ref: '#/components/messages/EnrichedEvent'
 
 components:
   messages:
-    ClientMessage:
-      name: ClientMessage
-      title: Client messages to Server
+    SubscribeMessage:
+      name: SubscribeMessage
+      title: Subscription / LOD request (client → server)
+      summary: >
+        Sent once by the client immediately after connecting.
+        Configures the H3 cells to receive events for and the level of detail.
+      contentType: application/json
       payload:
-        type: object
-        required: [type, payload]
-        discriminator:
-          propertyName: type
-        properties:
-          type:
-            type: string
-            enum: [SubscribeArea, UnsubscribeArea]
-          request_id:
-            type: string
-            description: Optional ID for correlation
+        $ref: '#/components/schemas/SubscribeMessage'
+      examples:
+        - name: vessels_only
+          summary: Subscribe to all vessel events with no enrichment
           payload:
-            type: object
-            # Details omitted for brevity
+            h3_cells: []
+        - name: area_with_current_weather
+          summary: Subscribe to two H3 cells and add current weather
+          payload:
+            h3_cells: [608431123508232191, 608431123508494335]
+            lod: [weather_current]
+        - name: area_with_full_weather
+          summary: Subscribe to an area with current conditions + 24 h forecast
+          payload:
+            h3_cells: [608431123508232191]
+            lod: [weather_current, weather_hourly]
 
-    ServerMessage:
-      name: ServerMessage
-      title: Server push messages to Client
+    EnrichedEvent:
+      name: EnrichedEvent
+      title: Real-time event (server → client)
+      summary: >
+        Pushed by the server for every matching event. The `weather` field is
+        present only when the client requested `weather_current` or
+        `weather_hourly` LOD and the event has a point position.
+      contentType: application/json
       payload:
-        type: object
-        required: [type, payload]
-        discriminator:
-          propertyName: type
-        properties:
-          type:
-            type: string
-            enum: [AreaSnapshot, AreaUpdate, SystemError]
+        $ref: '#/components/schemas/EnrichedEvent'
+      examples:
+        - name: vessel_position_no_weather
+          summary: Vessel position with no weather enrichment
           payload:
-            type: object
-            # Details omitted for brevity
+            event_id: "550e8400-e29b-41d4-a716-446655440000"
+            h3_index: 608431123508232191
+            timestamp: 1741183200000
+            source: AISStream
+            confidence: 1.0
+            payload:
+              type: VesselPosition
+              mmsi: 123456789
+              lat: 52.3702
+              lon: 4.8952
+              sog: 12.5
+              cog: 270.0
+        - name: vessel_position_with_current_weather
+          summary: Vessel position enriched with current weather
+          payload:
+            event_id: "550e8400-e29b-41d4-a716-446655440001"
+            h3_index: 608431123508232191
+            timestamp: 1741183200000
+            source: AISStream
+            confidence: 1.0
+            payload:
+              type: VesselPosition
+              mmsi: 987654321
+              lat: 52.3702
+              lon: 4.8952
+              sog: 8.2
+              cog: 90.0
+            weather:
+              current:
+                time: "2026-03-05T14:00"
+                temperature_2m: 6.1
+                wind_speed_10m: 18.4
+                relative_humidity_2m: 78.0
+        - name: vessel_position_with_full_weather
+          summary: Vessel position with current conditions and 24 h hourly forecast
+          payload:
+            event_id: "550e8400-e29b-41d4-a716-446655440002"
+            h3_index: 608431123508232191
+            timestamp: 1741183200000
+            source: AISStream
+            confidence: 1.0
+            payload:
+              type: VesselPosition
+              mmsi: 111222333
+              lat: 52.3702
+              lon: 4.8952
+            weather:
+              current:
+                time: "2026-03-05T14:00"
+                temperature_2m: 6.1
+                wind_speed_10m: 18.4
+                relative_humidity_2m: 78.0
+              hourly:
+                time:
+                  - "2026-03-05T00:00"
+                  - "2026-03-05T01:00"
+                temperature_2m: [4.2, 3.8]
+                wind_speed_10m: [15.1, 14.2]
+                relative_humidity_2m: [82.0, 84.0]
+
+  schemas:
+    SubscribeMessage:
+      type: object
+      required: [h3_cells]
+      properties:
+        h3_cells:
+          type: array
+          items:
+            type: integer
+            format: uint64
+          description: >
+            H3 cell indices (resolution 7) to subscribe to.
+            An empty array subscribes to ALL events (wildcard).
+        lod:
+          type: array
+          items:
+            $ref: '#/components/schemas/Lod'
+          default: []
+          description: >
+            Detail levels to include in each event response.
+            When empty or omitted, only vessel data is returned.
+
+    Lod:
+      type: string
+      description: >
+        Detail level flag. Multiple can be combined in the `lod` array.
+        `weather_hourly` implies `weather_current`.
+      enum:
+        - vessels
+        - weather_current
+        - weather_hourly
+
+    EnrichedEvent:
+      type: object
+      description: >
+        An event from the broadcaster, optionally enriched with weather data.
+        The event fields are identical to the REST API `Event` schema.
+        The `weather` field is added when a weather LOD is active.
+      required: [event_id, h3_index, timestamp, source, confidence, payload]
+      properties:
+        event_id:
+          type: string
+        h3_index:
+          type: integer
+          format: uint64
+        timestamp:
+          type: integer
+          format: int64
+          description: Unix timestamp in milliseconds.
+        source:
+          type: string
+        confidence:
+          type: number
+          format: float
+        payload:
+          $ref: 'openapi.yaml#/components/schemas/EventPayload'
+        weather:
+          $ref: '#/components/schemas/WeatherEnrichment'
+          description: >
+            Present only when the client requested `weather_current` or
+            `weather_hourly` LOD and the event has a point position.
+
+    CurrentWeather:
+      type: object
+      required: [time, temperature_2m, wind_speed_10m, relative_humidity_2m]
+      properties:
+        time:
+          type: string
+          description: ISO 8601 observation timestamp.
+        temperature_2m:
+          type: number
+          format: float
+          description: Air temperature at 2 m (°C).
+        wind_speed_10m:
+          type: number
+          format: float
+          description: Wind speed at 10 m (km/h).
+        relative_humidity_2m:
+          type: number
+          format: float
+          description: Relative humidity at 2 m (%).
+
+    HourlyWeather:
+      type: object
+      required: [time, temperature_2m, wind_speed_10m, relative_humidity_2m]
+      properties:
+        time:
+          type: array
+          items:
+            type: string
+          description: One ISO 8601 timestamp per hour (24 entries).
+        temperature_2m:
+          type: array
+          items:
+            type: number
+            format: float
+          description: Air temperature at 2 m per hour (°C).
+        wind_speed_10m:
+          type: array
+          items:
+            type: number
+            format: float
+          description: Wind speed at 10 m per hour (km/h).
+        relative_humidity_2m:
+          type: array
+          items:
+            type: number
+            format: float
+          description: Relative humidity at 2 m per hour (%).
+
+    WeatherEnrichment:
+      type: object
+      description: >
+        Weather data fetched from Open-Meteo, cached per H3 cell for 15 minutes.
+        Fields are present based on the LODs requested by the client.
+      properties:
+        current:
+          $ref: '#/components/schemas/CurrentWeather'
+        hourly:
+          $ref: '#/components/schemas/HourlyWeather'

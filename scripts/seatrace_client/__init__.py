@@ -1,16 +1,22 @@
 """
 SeaTraceSrv Python Client
-
-Auto-generated from api-contracts/openapi.yaml
 """
 
 from .models import (
+    # LOD
+    Lod,
+    # Weather enrichment
+    CurrentWeather,
+    HourlyWeather,
+    WeatherEnrichment,
+    # Event payloads
     Event,
     EventPayload,
     VesselPosition,
     WeatherAlert,
     SeaPhenomenon,
     Incident,
+    # REST models
     HealthResponse,
     SourceStatus,
     SnapshotRequest,
@@ -20,13 +26,20 @@ from .client import SeaTraceClient, AsyncSeaTraceClient
 from .realtime import RealtimeClient, stream_events
 
 __all__ = [
-    # Models
+    # LOD
+    "Lod",
+    # Weather enrichment
+    "CurrentWeather",
+    "HourlyWeather",
+    "WeatherEnrichment",
+    # Event payloads
     "Event",
     "EventPayload",
     "VesselPosition",
     "WeatherAlert",
     "SeaPhenomenon",
     "Incident",
+    # REST models
     "HealthResponse",
     "SourceStatus",
     "SnapshotRequest",
@@ -38,4 +51,4 @@ __all__ = [
     "stream_events",
 ]
 
-__version__ = "1.0.0"
+__version__ = "0.0.1"

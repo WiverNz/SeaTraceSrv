@@ -417,13 +417,17 @@ dependencies = [
 name = "control-api"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "axum",
  "core-model",
  "delivery",
  "futures-util",
+ "h3o",
+ "reqwest 0.12.28",
  "serde",
  "serde_json",
  "tokio",
+ "tracing",
  "uuid",
 ]
 

@@ -5,6 +5,8 @@ import io.seatrace.sdk.connection.WebSocketTransport
 import io.seatrace.sdk.debug.*
 import io.seatrace.sdk.error.SeaTraceError
 import io.seatrace.sdk.model.*
+import io.seatrace.sdk.model.enrichment.Lod
+import io.seatrace.sdk.model.enrichment.WeatherEnrichment
 import io.seatrace.sdk.subscription.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
@@ -140,46 +142,54 @@ class SeaTraceClient private constructor(
      * Subscribe to vessel position updates.
      *
      * @param bbox Bounding box to filter positions (optional)
-     * @param h3Cells Specific H3 cells to subscribe to (optional, empty = all)
-     * @param minConfidence Minimum confidence threshold (0.0-1.0)
+     * @param h3Cells H3 cells to subscribe to (optional, empty = all)
+     * @param minConfidence Minimum confidence threshold (0.0–1.0)
      * @param mmsiFilter List of MMSIs to filter (optional)
+     * @param lod Detail levels to request. Use [Lod.WEATHER_CURRENT] to receive
+     *   current weather conditions attached to each event, [Lod.WEATHER_HOURLY]
+     *   for a 24-hour hourly forecast. Access via [VesselUpdate.weather].
      * @return SubscriptionHandle for managing the subscription
      */
     fun subscribeVessels(
         bbox: BBox? = null,
         h3Cells: List<Long>? = null,
         minConfidence: Float = 0.0f,
-        mmsiFilter: List<Long>? = null
+        mmsiFilter: List<Long>? = null,
+        lod: List<Lod> = listOf(Lod.VESSELS),
     ): SubscriptionHandle {
         val params = SubscriptionParams.Vessels(
             bbox = bbox,
             h3Cells = h3Cells,
             minConfidence = minConfidence,
-            mmsiFilter = mmsiFilter
+            mmsiFilter = mmsiFilter,
+            lod = lod,
         )
         return createSubscription(SubscriptionType.VESSELS, params)
     }
 
     /**
-     * Subscribe to general events.
+     * Subscribe to general events (sea phenomena, incidents).
      *
      * @param bbox Bounding box (optional)
-     * @param h3Cells Specific H3 cells (optional, empty = all)
+     * @param h3Cells H3 cells (optional, empty = all)
      * @param categories Event categories to include (optional)
      * @param minConfidence Minimum confidence threshold
+     * @param lod Detail levels to request (see [subscribeVessels])
      * @return SubscriptionHandle
      */
     fun subscribeEvents(
         bbox: BBox? = null,
         h3Cells: List<Long>? = null,
         categories: List<String>? = null,
-        minConfidence: Float = 0.0f
+        minConfidence: Float = 0.0f,
+        lod: List<Lod> = listOf(Lod.VESSELS),
     ): SubscriptionHandle {
         val params = SubscriptionParams.Events(
             bbox = bbox,
             h3Cells = h3Cells,
             categories = categories,
-            minConfidence = minConfidence
+            minConfidence = minConfidence,
+            lod = lod,
         )
         return createSubscription(SubscriptionType.EVENTS, params)
     }
@@ -188,19 +198,22 @@ class SeaTraceClient private constructor(
      * Subscribe to weather alerts.
      *
      * @param bbox Bounding box (optional)
-     * @param h3Cells Specific H3 cells (optional)
+     * @param h3Cells H3 cells (optional)
      * @param severities Severity levels to include (optional)
+     * @param lod Detail levels to request (see [subscribeVessels])
      * @return SubscriptionHandle
      */
     fun subscribeWeather(
         bbox: BBox? = null,
         h3Cells: List<Long>? = null,
-        severities: List<String>? = null
+        severities: List<String>? = null,
+        lod: List<Lod> = listOf(Lod.VESSELS),
     ): SubscriptionHandle {
         val params = SubscriptionParams.Weather(
             bbox = bbox,
             h3Cells = h3Cells,
-            severities = severities
+            severities = severities,
+            lod = lod,
         )
         return createSubscription(SubscriptionType.WEATHER, params)
     }
@@ -209,34 +222,41 @@ class SeaTraceClient private constructor(
      * Subscribe to animal sightings.
      *
      * @param bbox Bounding box (optional)
-     * @param h3Cells Specific H3 cells (optional)
+     * @param h3Cells H3 cells (optional)
      * @param species Species to filter (optional)
      * @param minConfidence Minimum confidence threshold
+     * @param lod Detail levels to request (see [subscribeVessels])
      * @return SubscriptionHandle
      */
     fun subscribeAnimals(
         bbox: BBox? = null,
         h3Cells: List<Long>? = null,
         species: List<String>? = null,
-        minConfidence: Float = 0.0f
+        minConfidence: Float = 0.0f,
+        lod: List<Lod> = listOf(Lod.VESSELS),
     ): SubscriptionHandle {
         val params = SubscriptionParams.Animals(
             bbox = bbox,
             h3Cells = h3Cells,
             species = species,
-            minConfidence = minConfidence
+            minConfidence = minConfidence,
+            lod = lod,
         )
         return createSubscription(SubscriptionType.ANIMALS, params)
     }
 
     /**
-     * Subscribe to all events (wildcard subscription).
+     * Wildcard subscription — receives all events.
      *
-     * @param h3Cells Specific H3 cells (empty = truly all events)
+     * @param h3Cells H3 cells (empty = truly all events)
+     * @param lod Detail levels to request (see [subscribeVessels])
      * @return SubscriptionHandle
      */
-    fun subscribeAll(h3Cells: List<Long> = emptyList()): SubscriptionHandle {
-        val params = SubscriptionParams.All(h3Cells = h3Cells)
+    fun subscribeAll(
+        h3Cells: List<Long> = emptyList(),
+        lod: List<Lod> = listOf(Lod.VESSELS),
+    ): SubscriptionHandle {
+        val params = SubscriptionParams.All(h3Cells = h3Cells, lod = lod)
         return createSubscription(SubscriptionType.ALL, params)
     }
 
@@ -302,7 +322,7 @@ class SeaTraceClient private constructor(
 
         val message = json.encodeToString(
             SubscriptionMessage.serializer(),
-            SubscriptionMessage(h3_cells = h3Cells)
+            SubscriptionMessage(h3Cells = h3Cells, lod = params.lod),
         )
 
         transport.send(message)

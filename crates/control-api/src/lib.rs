@@ -1,5 +1,7 @@
+pub mod lod;
 pub mod routes;
 pub mod state;
+pub mod weather;
 
 pub use state::AppState;
 
