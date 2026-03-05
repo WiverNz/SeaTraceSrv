@@ -11,6 +11,8 @@ import io.seatrace.sdk.subscription.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -337,7 +339,21 @@ class SeaTraceClient private constructor(
 
     private suspend fun processMessage(rawMessage: String) {
         try {
-            val event = json.decodeFromString(Event.serializer(), rawMessage)
+            val jsonElement = json.parseToJsonElement(rawMessage)
+            if (jsonElement is kotlinx.serialization.json.JsonObject) {
+                val type = jsonElement.jsonObject["type"]?.jsonPrimitive?.content
+                if (type == "SubscribeAck" || type == "Error") {
+                    if (type == "Error") {
+                        val msg = jsonElement.jsonObject["message"]?.jsonPrimitive?.content
+                        log(LogLevel.ERROR, "Server Error: $msg")
+                    } else {
+                        log(LogLevel.DEBUG, "Subscription acknowledged: ${jsonElement.jsonObject["active_cells"]?.jsonPrimitive?.content} cells active")
+                    }
+                    return
+                }
+            }
+
+            val event = json.decodeFromJsonElement(Event.serializer(), jsonElement)
 
             parsedEventListener?.onEvent(event)
 

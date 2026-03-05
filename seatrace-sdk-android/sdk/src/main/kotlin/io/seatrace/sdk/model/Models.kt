@@ -222,10 +222,12 @@ data class Event(
     val weather: WeatherEnrichment? = null,
 ) {
     /** Convert timestamp to Java Instant */
+    @get:android.annotation.SuppressLint("NewApi")
     val instant: java.time.Instant
         get() = java.time.Instant.ofEpochMilli(timestamp)
 
     /** Convert timestamp to formatted string */
+    @get:android.annotation.SuppressLint("NewApi")
     val formattedTime: String
         get() = java.time.format.DateTimeFormatter.ISO_INSTANT.format(instant)
 }

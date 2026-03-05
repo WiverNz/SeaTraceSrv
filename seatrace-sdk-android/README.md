@@ -1,280 +1,136 @@
 # SeaTrace Android SDK
 
-Android SDK for SeaTraceSrv - Real-time maritime vessel tracking.
+> **LLM / GPT INSTRUCTIONS**
+> This SDK is built using modern Android principles (Coroutines, StateFlow, SharedFlow, Kotlin Serialization, OkHttp WebSockets). When writing code against this SDK, please follow the guidelines and examples below closely.
 
-## Features
+## Core Concepts
 
-- Real-time vessel position tracking via WebSocket
-- Automatic reconnection with exponential backoff
-- Type-safe Kotlin models
-- Coroutines and Flow-based streaming API
-- Debug message inspection
-- Subscription-based filtering
+1. **State & Subscriptions are Dynamic**: Client connects once via `WebSocketTransport`. You can call `subscribeVessels`, `subscribeWeather`, `subscribeEvents`, `subscribeAnimals`, or `subscribeAll` *at any time, multiple times* without disconnecting. The server responds with `SubscribeAck` or `Error`, which the SDK handles transparently.
+2. **Level of Detail (LOD)**: Data enrichment is determined by `Lod` enums (e.g., `Lod.WEATHER_CURRENT`, `Lod.WEATHER_HOURLY`, `Lod.VESSELS`). Pass these to your subscription to receive appended data on the `Event` object.
+3. **Flow-Based Architecture**: Do NOT use callbacks. The SDK exposes `SharedFlow`s (`vesselsFlow`, `weatherFlow`, `eventsFlow`, `allEventsFlow`) that you should `collect` inside a coroutine.
+4. **Data Models are Data Classes**: Incoming JSON is deserialized into an `Event` envelope. The payload property is an `EventPayloadRaw`. We use extension/helper methods (`toVesselPosition()`, `toWeatherAlert()`, etc.) to get the typed payload securely.
 
-## Installation
+---
 
-### Gradle (Maven Central)
-
-```kotlin
-dependencies {
-    implementation("io.seatrace:sdk:1.0.0")
-}
-```
-
-### Gradle (GitHub Packages)
+## 1. Setup and Initialization
 
 ```kotlin
-repositories {
-    maven {
-        url = uri("https://maven.pkg.github.com/your-org/seatrace-sdk-android")
-        credentials {
-            username = project.findProperty("gpr.user") ?: System.getenv("GITHUB_ACTOR")
-            password = project.findProperty("gpr.key") ?: System.getenv("GITHUB_TOKEN")
-        }
-    }
-}
+import io.seatrace.sdk.SeaTraceClient
+import io.seatrace.sdk.SeaTraceConfig
+import io.seatrace.sdk.model.enrichment.Lod
+import io.seatrace.sdk.subscription.BBox
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.launch
 
-dependencies {
-    implementation("io.seatrace:sdk:1.0.0")
-}
-```
-
-## Quick Start
-
-### Basic Usage
-
-```kotlin
-// Create client
+// 1a. Basic Configuration
 val client = SeaTraceClient(
-    endpoint = "wss://api.seatrace.example/realtime",
-    tokenProvider = { getAuthToken() }  // Optional
+    endpoint = "wss://api.seatrace.example/realtime"
 )
 
-// Connect
-client.connect()
-
-// Subscribe to vessel positions
-val subscription = client.subscribeVessels(
-    bbox = BBox(west = -10.0, south = 35.0, east = 30.0, north = 60.0),
-    minConfidence = 0.7f
-)
-
-// Collect updates
-lifecycleScope.launch {
-    client.vesselsFlow.collect { update ->
-        val vessel = update.position
-        Log.d("SeaTrace", "Vessel ${vessel.mmsi} at ${vessel.lat}, ${vessel.lon}")
-    }
-}
-
-// Don't forget to clean up
-client.close()
-```
-
-### Configuration Options
-
-```kotlin
+// 1b. Advanced Configuration
 val config = SeaTraceConfig.Builder()
     .endpoint("wss://api.seatrace.example/realtime")
-    .tokenProvider { authToken }
+    .tokenProvider { "my_auth_token" }
     .connectTimeout(30.seconds)
     .pingInterval(30.seconds)
-    .reconnectPolicy(ReconnectPolicy.Default)
-    .maxQueueSize(1000)
-    .debugMode(true)
-    .logLevel(LogLevel.DEBUG)
     .build()
 
-val client = SeaTraceClient(config)
+val advancedClient = SeaTraceClient(config)
 ```
 
-### Subscription Types
+## 2. Connection Lifecycle
 
-```kotlin
-// Subscribe to vessel positions
-client.subscribeVessels(
-    bbox = BBox(...),
-    minConfidence = 0.7f,
-    mmsiFilter = listOf(123456789L)
-)
-
-// Subscribe to weather alerts
-client.subscribeWeather(
-    bbox = BBox(...),
-    severities = listOf("severe", "extreme")
-)
-
-// Subscribe to all events (wildcard)
-client.subscribeAll()
-
-// Unsubscribe
-subscription.cancel()
-// or
-client.clearSubscriptions()
-```
-
-### Connection State
+Do not subscribe until you have called `connect()`. The client handles reconnects automatically based on its `ReconnectPolicy`.
 
 ```kotlin
 lifecycleScope.launch {
+    // Collect connection state to drive UI
     client.connectionState.collect { state ->
         when (state) {
-            is ConnectionState.Disconnected -> showDisconnected()
-            is ConnectionState.Connecting -> showConnecting()
-            is ConnectionState.Connected -> showConnected()
-            is ConnectionState.Reconnecting -> showReconnecting(state.attempt)
-            is ConnectionState.Failed -> showError(state.error)
+            is ConnectionState.Connected -> Log.i("App", "Connected!")
+            is ConnectionState.Disconnected -> Log.w("App", "Disconnected")
+            is ConnectionState.Reconnecting -> Log.w("App", "Reconnecting...")
+            is ConnectionState.Failed -> Log.e("App", "Error: ${state.error}")
+            else -> {}
         }
     }
 }
 
-// Simple connected check
-if (client.isConnected.value) {
-    // Do something
+// Initiate connection
+lifecycleScope.launch {
+    client.connect()
 }
 ```
 
-### Error Handling
+## 3. Creating Dynamic Subscriptions & Requesting LODs
+
+Subscriptions can overlap and be called multiple times.
+
+```kotlin
+// Example: Requesting vessel positions in a bounding box, WITH weather enrichment
+val subHandle = client.subscribeVessels(
+    bbox = BBox(west = -10.0, south = 35.0, east = 30.0, north = 60.0),
+    lod = listOf(Lod.VESSELS, Lod.WEATHER_CURRENT) // <-- Requests server to attach Weather
+)
+
+// Later: Cancel the subscription
+// subHandle.cancel()
+// client.unsubscribe(subHandle)
+```
+
+## 4. Collecting Events using Flows
+
+You should consume the typed flows (e.g., `vesselsFlow`, `weatherFlow`), which already unwrap the `EventPayloadRaw` into its respective strong type (`VesselUpdate`, `WeatherUpdate`).
 
 ```kotlin
 lifecycleScope.launch {
-    client.errorsFlow.collect { error ->
-        when (error) {
-            is SeaTraceError.AuthError.InvalidToken -> refreshToken()
-            is SeaTraceError.ConnectionError.Timeout -> showTimeoutMessage()
-            is SeaTraceError.ConnectionError.NetworkUnavailable -> showOfflineMessage()
-            else -> Log.e("SeaTrace", "Error: ${error.message}")
+    client.vesselsFlow.collect { update ->
+        val event = update.event
+        val position = update.position // VesselPosition
+
+        Log.d("Fleet", "Vessel ${position.mmsi} is at ${position.lat}, ${position.lon}")
+
+        // If we subscribed with Lod.WEATHER_CURRENT, this will be populated:
+        val weather = event.weather?.current
+        if (weather != null) {
+            Log.d("Fleet", "Temp: ${weather.temperature_2m} C | Wind: ${weather.wind_speed_10m} km/h")
         }
     }
 }
 ```
 
-### Debug Features
+## 5. Raw Event Payload Handling
+
+If consuming `client.allEventsFlow`, you must manually parse the payload. The raw format encapsulates everything safely:
 
 ```kotlin
-// Raw message inspection
-client.setRawMessageListener { direction, message ->
-    val prefix = if (direction == MessageDirection.INBOUND) "<<" else ">>"
-    Log.d("SeaTrace", "$prefix $message")
+lifecycleScope.launch {
+    client.allEventsFlow.collect { event ->
+        // Use the built-in map methods on EventPayloadRaw
+        event.payload.toVesselPosition()?.let { pos ->
+            // handle VesselPosition
+        }
+        
+        event.payload.toIncident()?.let { incident ->
+            // handle Incident
+        }
+    } // Server SubscribeAck and Error messages don't reach here; SDK filters them natively!
 }
+```
 
-// Parsed event inspection
-client.setParsedEventListener { event ->
-    Log.d("SeaTrace", "Event: ${event.eventId} - ${event.payload.type}")
+## 6. Cleanup
+
+```kotlin
+override fun onDestroy() {
+    super.onDestroy()
+    client.close() // Disconnects WS and cancels CoroutineScopes
 }
 ```
 
-## Data Models
+---
 
-### VesselPosition
-
-```kotlin
-data class VesselPosition(
-    val mmsi: Long,          // Maritime Mobile Service Identity
-    val lat: Double,         // Latitude
-    val lon: Double,         // Longitude
-    val sog: Float?,         // Speed Over Ground (knots)
-    val cog: Float?          // Course Over Ground (degrees)
-)
-```
-
-### Event
-
-```kotlin
-data class Event(
-    val eventId: String,     // Unique event ID
-    val h3Index: Long,       // H3 spatial index
-    val timestamp: Long,     // Unix timestamp (ms)
-    val source: String,      // Data source
-    val confidence: Float,   // Confidence score (0-1)
-    val payload: EventPayloadRaw
-)
-```
-
-## Reconnection Policy
-
-```kotlin
-// Default policy
-ReconnectPolicy.Default
-
-// Disable auto-reconnect
-ReconnectPolicy.Disabled
-
-// Aggressive reconnection
-ReconnectPolicy.Aggressive
-
-// Custom policy
-ReconnectPolicy(
-    enabled = true,
-    initialDelayMs = 1_000,
-    maxDelayMs = 30_000,
-    backoffMultiplier = 2.0,
-    jitterMs = 1_000,
-    maxAttempts = 10
-)
-```
-
-## Proguard
-
-The SDK includes consumer Proguard rules that are automatically applied.
-
-## Code Generation
-
-The SDK uses OpenAPI Generator to create models from `api-contracts/openapi.yaml`:
-
-```bash
-./gradlew :sdk:openApiGenerate
-```
-
-Generated code is placed in `sdk/build/generated/openapi/` and automatically included in the build.
-
-## Testing
-
-### Unit Tests
-
-```bash
-./gradlew :sdk:testDebugUnitTest
-```
-
-### Integration Tests
-
-Integration tests connect to a real SeaTraceSrv instance:
-
-```bash
-# Requires SeaTraceSrv running and Android emulator/device connected
-./gradlew :sdk:connectedAndroidTest
-```
-
-Test configuration (in `sdk/build.gradle.kts`):
-- `TEST_ENDPOINT`: WebSocket endpoint (default: `ws://asgard.fritz.box:8080/realtime`)
-- `TEST_HTTP_ENDPOINT`: HTTP endpoint (default: `http://asgard.fritz.box:8080`)
-
-### VS Code Launch Tasks
-
-- **Android SDK: Integration Tests** - Run instrumented tests on device/emulator
-- **Android SDK: Build** - Build the SDK AAR
-- **Android SDK: Unit Tests** - Run unit tests
-
-## Building
-
-```bash
-# Build debug AAR
-./gradlew :sdk:assembleDebug
-
-# Build release AAR
-./gradlew :sdk:assembleRelease
-
-# Build and publish to local Maven
-./gradlew :sdk:publishToMavenLocal
-```
-
-## Requirements
-
-- Android API 24+
-- Kotlin 1.9+
-- Gradle 8.4+
-- JDK 17+
-
-## License
-
-MIT License
+## Architectural Notes for Code Generators
+- The underlying `WebSocketTransport` handles ping-pong and exponential backoff (`reconnectPolicy`). Do not re-implement reconnect logic.
+- Avoid using `java.time` directly inside `@Serializable` classes without `@get:android.annotation.SuppressLint("NewApi")` to prevent Android linting errors below API 26.
+- The repository follows a standard Android library structure (`seatrace-sdk-android/sdk/src/main/kotlin/...`).
+- To build the SDK, use: `./gradlew :sdk:build`.
