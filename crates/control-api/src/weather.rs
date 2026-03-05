@@ -101,13 +101,8 @@ impl WeatherClient {
         }
     }
 
-    /// Return weather enrichment for a position.
-    ///
-    /// - `h3_cell` — used as the cache key
-    /// - `lat` / `lon` — used for the API request on cache miss
-    /// - `need_current` / `need_hourly` — controls which fields are populated;
-    ///   the underlying fetch always retrieves both so the cache stays complete.
-    pub async fn get(
+    /// Internal fetch logic
+    async fn fetch(
         &self,
         h3_cell: u64,
         lat: f64,
@@ -180,6 +175,41 @@ impl WeatherClient {
         Ok(WeatherEnrichment {
             current: if need_current { current } else { None },
             hourly: if need_hourly { hourly } else { None },
+        })
+    }
+}
+
+use crate::enrichment::{extract_position, Enricher};
+use core_model::Event;
+use crate::lod::Lod;
+use futures_util::future::BoxFuture;
+
+impl Enricher for WeatherClient {
+    fn name(&self) -> &'static str {
+        "weather"
+    }
+
+    fn wants(&self, lods: &[Lod]) -> bool {
+        lods.contains(&Lod::WeatherCurrent) || lods.contains(&Lod::WeatherHourly)
+    }
+
+    fn enrich<'a>(&'a self, event: &'a Event, lods: &'a [Lod]) -> BoxFuture<'a, Option<serde_json::Value>> {
+        let (lat, lon) = match extract_position(event) {
+            Some(pos) => pos,
+            None => return Box::pin(async { None }),
+        };
+        
+        let need_current = lods.contains(&Lod::WeatherCurrent) || lods.contains(&Lod::WeatherHourly);
+        let need_hourly = lods.contains(&Lod::WeatherHourly);
+        
+        Box::pin(async move {
+            match self.fetch(event.h3_index, lat, lon, need_current, need_hourly).await {
+                Ok(enrichment) => serde_json::to_value(enrichment).ok(),
+                Err(e) => {
+                    tracing::warn!("Weather fetch failed for h3={}: {:#}", event.h3_index, e);
+                    None
+                }
+            }
         })
     }
 }

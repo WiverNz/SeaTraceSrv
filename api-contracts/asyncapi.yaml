@@ -19,6 +19,10 @@ channels:
         $ref: '#/components/messages/SubscribeMessage'
       event:
         $ref: '#/components/messages/EnrichedEvent'
+      error:
+        $ref: '#/components/messages/ErrorMessage'
+      subscribe_ack:
+        $ref: '#/components/messages/SubscribeAck'
 
 components:
   messages:
@@ -46,6 +50,35 @@ components:
           payload:
             h3_cells: [608431123508232191]
             lod: [weather_current, weather_hourly]
+
+    ErrorMessage:
+      name: ErrorMessage
+      title: Error response (server → client)
+      summary: >
+        Sent if a client sends invalid JSON or unsupported parameters.
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/ErrorMessage'
+      examples:
+        - name: invalid_json
+          payload:
+            type: Error
+            message: "Failed to parse JSON"
+
+    SubscribeAck:
+      name: SubscribeAck
+      title: Subscription acknowledgment (server → client)
+      summary: >
+        Sent after processing a client's SubscribeMessage to confirm routing.
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/SubscribeAck'
+      examples:
+        - name: success
+          payload:
+            type: SubscribeAck
+            status: ok
+            active_cells: 5
 
     EnrichedEvent:
       name: EnrichedEvent
@@ -142,6 +175,32 @@ components:
           description: >
             Detail levels to include in each event response.
             When empty or omitted, only vessel data is returned.
+
+    ErrorMessage:
+      type: object
+      description: Error payload sent to the client when a request format is invalid.
+      required: [type, message]
+      properties:
+        type:
+          type: string
+          enum: [Error]
+        message:
+          type: string
+
+    SubscribeAck:
+      type: object
+      description: Confirmation that a `SubscribeMessage` has been applied dynamically.
+      required: [type, status, active_cells]
+      properties:
+        type:
+          type: string
+          enum: [SubscribeAck]
+        status:
+          type: string
+          enum: [ok]
+        active_cells:
+          type: integer
+          description: Total number of H3 cells currently subscribed to (0 = ALL/wildcard).
 
     Lod:
       type: string

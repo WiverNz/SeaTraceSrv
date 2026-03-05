@@ -5,22 +5,12 @@ use axum::{
     },
     response::IntoResponse,
 };
-use core_model::api::types::EventPayload;
-use core_model::Event;
 use futures_util::stream::StreamExt;
 use serde::{Deserialize, Serialize};
-use tracing::warn;
 
-use crate::{lod::Lod, state::AppState, weather::WeatherEnrichment};
+use crate::{lod::Lod, state::AppState};
 
-/// Message sent by the client to establish a subscription.
-///
-/// ```json
-/// { "h3_cells": ["8a2a1072b59ffff"], "lod": ["weather_current"] }
-/// ```
-///
-/// `h3_cells` — H3 cell indices to subscribe to; empty list = all events.
-/// `lod`      — optional detail levels (default: vessels only).
+/// Message sent by the client to establish or update a subscription.
 #[derive(Debug, Deserialize)]
 pub struct SubscribeMessage {
     pub h3_cells: Vec<u64>,
@@ -28,24 +18,19 @@ pub struct SubscribeMessage {
     pub lod: Vec<Lod>,
 }
 
-/// An event optionally enriched with weather data, sent to the client.
 #[derive(Serialize)]
-struct EnrichedEvent {
-    #[serde(flatten)]
-    inner: Event,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    weather: Option<WeatherEnrichment>,
+struct SubscribeAck {
+    #[serde(rename = "type")]
+    type_: &'static str,
+    status: &'static str,
+    active_cells: usize,
 }
 
-/// Extract the lat/lon from a vessel/incident/phenomenon event payload.
-/// Returns `None` for event types without a point position (e.g. WeatherAlert).
-fn extract_position(event: &Event) -> Option<(f64, f64)> {
-    match &event.payload {
-        EventPayload::VesselPosition(p) => Some((p.lat, p.lon)),
-        EventPayload::SeaPhenomenon(p) => Some((p.lat, p.lon)),
-        EventPayload::Incident(p) => Some((p.lat, p.lon)),
-        EventPayload::WeatherAlert(_) => None,
-    }
+#[derive(Serialize)]
+struct ErrorMessage {
+    #[serde(rename = "type")]
+    type_: &'static str,
+    message: String,
 }
 
 pub async fn realtime_handler(
@@ -56,78 +41,34 @@ pub async fn realtime_handler(
 }
 
 async fn handle_socket(mut socket: WebSocket, state: AppState) {
-    // 1. Wait for the first message: the subscription / LOD request.
-    let first_msg = match socket.next().await {
-        Some(Ok(msg)) => msg,
-        _ => return,
-    };
-
-    let text = match first_msg {
-        Message::Text(t) => t,
-        _ => {
-            let _ = socket
-                .send(Message::Text("Expected text message".into()))
-                .await;
-            return;
-        }
-    };
-
-    let sub: SubscribeMessage = match serde_json::from_str(&text) {
-        Ok(s) => s,
-        Err(e) => {
-            let _ = socket
-                .send(Message::Text(
-                    format!("Invalid subscription JSON: {}", e).into(),
-                ))
-                .await;
-            return;
-        }
-    };
-
-    // Derive weather flags from the requested LODs once, before the loop.
-    let need_weather_current =
-        sub.lod.contains(&Lod::WeatherCurrent) || sub.lod.contains(&Lod::WeatherHourly);
-    let need_weather_hourly = sub.lod.contains(&Lod::WeatherHourly);
-
     let client_id = uuid::Uuid::new_v4().to_string();
-    let mut rx = state.broadcaster.subscribe(&client_id, sub.h3_cells).await;
+    
+    // Create an empty subscription out of the gate to get the receiver channel.
+    // The client will receive nothing until they send a SubscribeMessage.
+    let mut rx = state.broadcaster.subscribe(&client_id, vec![]).await;
+    let mut active_lods: Vec<Lod> = vec![];
 
-    // 2. Forward events to the client, enriching them as requested.
     loop {
         tokio::select! {
+            // 1. Handle incoming events from the message bus
             result = rx.recv() => {
                 match result {
                     Ok(event) => {
-                        // Fetch weather only when the LOD requests it and the
-                        // event has a point position to query.
-                        let weather = if need_weather_current {
-                            if let Some((lat, lon)) = extract_position(&event) {
-                                match state
-                                    .weather_client
-                                    .get(
-                                        event.h3_index,
-                                        lat,
-                                        lon,
-                                        need_weather_current,
-                                        need_weather_hourly,
-                                    )
-                                    .await
-                                {
-                                    Ok(w) => Some(w),
-                                    Err(e) => {
-                                        warn!("Weather fetch failed for h3={}: {:#}", event.h3_index, e);
-                                        None
-                                    }
-                                }
-                            } else {
-                                None
-                            }
-                        } else {
-                            None
+                        // Pass the event through the enrichment pipeline
+                        let enrichments = state.enricher_pipeline.run(&event, &active_lods).await;
+                        
+                        // Convert the base event to a Map so we can inject the enrichments
+                        let mut event_val = match serde_json::to_value(&event) {
+                            Ok(serde_json::Value::Object(map)) => map,
+                            _ => continue,
                         };
 
-                        let enriched = EnrichedEvent { inner: event, weather };
-                        if let Ok(json) = serde_json::to_string(&enriched) {
+                        // Inject the top-level keys returned by the enrichers
+                        for (k, v) in enrichments {
+                            event_val.insert(k, v);
+                        }
+
+                        if let Ok(json) = serde_json::to_string(&event_val) {
                             if socket.send(Message::Text(json.into())).await.is_err() {
                                 break;
                             }
@@ -140,11 +81,49 @@ async fn handle_socket(mut socket: WebSocket, state: AppState) {
                     Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
                 }
             }
-            client_msg = socket.next() => {
-                match client_msg {
-                    Some(Ok(Message::Close(_))) => break,
-                    Some(Ok(_)) => {},
-                    _ => break,
+
+            // 2. Handle incoming messages from the WebSocket client
+            client_msg_opt = socket.next() => {
+                let msg = match client_msg_opt {
+                    Some(Ok(m)) => m,
+                    Some(Err(_)) | None => break, // Connection closed or error
+                };
+
+                match msg {
+                    Message::Text(text) => {
+                        match serde_json::from_str::<SubscribeMessage>(&text) {
+                            Ok(sub) => {
+                                // Update active lods
+                                active_lods = sub.lod.clone();
+                                
+                                // Update subscription in the broadcaster
+                                let cells_count = sub.h3_cells.len();
+                                state.broadcaster.update_subscription(&client_id, sub.h3_cells).await;
+                                
+                                // Send Ack
+                                let ack = SubscribeAck {
+                                    type_: "SubscribeAck",
+                                    status: "ok",
+                                    active_cells: cells_count,
+                                };
+                                if let Ok(json) = serde_json::to_string(&ack) {
+                                    let _ = socket.send(Message::Text(json.into())).await;
+                                }
+                            }
+                            Err(e) => {
+                                // Send Error
+                                let err = ErrorMessage {
+                                    type_: "Error",
+                                    message: format!("Invalid subscription JSON: {}", e),
+                                };
+                                if let Ok(json) = serde_json::to_string(&err) {
+                                    let _ = socket.send(Message::Text(json.into())).await;
+                                }
+                            }
+                        }
+                    }
+                    Message::Close(_) => break,
+                    _ => {} // Ignore Ping/Pong/Binary
                 }
             }
         }

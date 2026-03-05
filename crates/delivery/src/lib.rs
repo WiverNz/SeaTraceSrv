@@ -9,6 +9,9 @@ pub trait Broadcaster: Send + Sync {
     /// Подключить клиента к ячейкам. Возвращает канал (stream) для отправки ему событий.
     async fn subscribe(&self, client_id: &str, h3_cells: Vec<u64>) -> broadcast::Receiver<Event>;
 
+    /// Обновить подписку существующего клиента без пересоздания канала.
+    async fn update_subscription(&self, client_id: &str, h3_cells: Vec<u64>);
+
     /// Отправить событие в шину (дальше оно дойдет до нужных подписчиков)
     async fn broadcast(&self, event: Event) -> Result<()>;
 }
@@ -32,22 +35,21 @@ impl InMemoryBroadcaster {
             wildcard_subscribers: RwLock::new(HashSet::new()),
         }
     }
-}
 
-impl Default for InMemoryBroadcaster {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-#[async_trait]
-impl Broadcaster for InMemoryBroadcaster {
-    async fn subscribe(&self, client_id: &str, h3_cells: Vec<u64>) -> broadcast::Receiver<Event> {
-        let mut clients = self.clients.write().await;
-        // Пересоздаем канал для клиента (или используем существующий).
-        // В MVP создаем новый канал на 1024 сообщения.
-        let (tx, rx) = broadcast::channel(1024);
-        clients.insert(client_id.to_string(), tx.clone());
+    /// Internal helper to set subscriptions for a client
+    async fn set_client_subscriptions(&self, client_id: &str, h3_cells: Vec<u64>) {
+        // First, remove the client from all existing subscriptions
+        {
+            let mut subs = self.subscriptions.write().await;
+            for clients in subs.values_mut() {
+                clients.remove(client_id);
+            }
+        }
+        
+        {
+            let mut wildcards = self.wildcard_subscribers.write().await;
+            wildcards.remove(client_id);
+        }
 
         // Empty cell list = wildcard subscription (receive ALL events)
         if h3_cells.is_empty() {
@@ -59,8 +61,32 @@ impl Broadcaster for InMemoryBroadcaster {
                 subs.entry(cell).or_default().insert(client_id.to_string());
             }
         }
+    }
+}
+
+impl Default for InMemoryBroadcaster {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[async_trait]
+impl Broadcaster for InMemoryBroadcaster {
+    async fn subscribe(&self, client_id: &str, h3_cells: Vec<u64>) -> broadcast::Receiver<Event> {
+        let rx = {
+            let mut clients = self.clients.write().await;
+            let (tx, rx) = broadcast::channel(1024);
+            clients.insert(client_id.to_string(), tx.clone());
+            rx
+        };
+
+        self.set_client_subscriptions(client_id, h3_cells).await;
 
         rx
+    }
+
+    async fn update_subscription(&self, client_id: &str, h3_cells: Vec<u64>) {
+        self.set_client_subscriptions(client_id, h3_cells).await;
     }
 
     async fn broadcast(&self, event: Event) -> Result<()> {

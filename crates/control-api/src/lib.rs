@@ -1,3 +1,4 @@
+pub mod enrichment;
 pub mod lod;
 pub mod routes;
 pub mod state;

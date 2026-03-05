@@ -80,24 +80,37 @@ async fn system_receives_event(world: &mut SeaTraceWsWorld, cell: u64) {
 async fn ws_client_receives_event(world: &mut SeaTraceWsWorld, expected_mmsi: i64) {
     let ws = world.ws_stream.as_mut().unwrap();
     
-    // Ждем 1 сообщение (таймаут чтобы не висеть вечно, если тест сломался)
-    let msg = tokio::time::timeout(std::time::Duration::from_secs(2), ws.next())
-        .await
-        .expect("Timeout waiting for WebSocket message")
-        .expect("Stream ended unexpectedly")
-        .expect("WebSocket error");
+    // Ждем сообщения (таймаут чтобы не висеть вечно, если тест сломался)
+    // Пропускаем контрольные сообщения (например, SubscribeAck)
+    loop {
+        let msg = tokio::time::timeout(std::time::Duration::from_secs(2), ws.next())
+            .await
+            .expect("Timeout waiting for WebSocket message")
+            .expect("Stream ended unexpectedly")
+            .expect("WebSocket error");
 
-    if let Message::Text(text) = msg {
-        let event: Event = serde_json::from_str(&text).expect("Failed to parse event JSON");
-        
-        match event.payload {
-            core_model::api::types::EventPayload::VesselPosition(pos) => {
-                assert_eq!(pos.mmsi, expected_mmsi, "MMSI mismatch on websocket");
+        if let Message::Text(text) = msg {
+            // Check if it's an ack/error message by peeking into JSON
+            if let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) {
+                if let Some(msg_type) = value.get("type").and_then(|t| t.as_str()) {
+                    if msg_type == "SubscribeAck" || msg_type == "Error" {
+                        continue; // Skip Ack
+                    }
+                }
             }
-            _ => panic!("Expected VesselPosition over websocket"),
+
+            let event: Event = serde_json::from_str(&text).expect(&format!("Failed to parse event JSON: {}", text));
+            
+            match event.payload {
+                core_model::api::types::EventPayload::VesselPosition(pos) => {
+                    assert_eq!(pos.mmsi, expected_mmsi, "MMSI mismatch on websocket");
+                    break;
+                }
+                _ => panic!("Expected VesselPosition over websocket"),
+            }
+        } else {
+            panic!("Expected Text message over websocket");
         }
-    } else {
-        panic!("Expected Text message over websocket");
     }
 }
 

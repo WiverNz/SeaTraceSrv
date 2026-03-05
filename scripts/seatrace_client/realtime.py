@@ -71,7 +71,7 @@ class RealtimeClient:
         lod: Optional[list[Lod]] = None,
     ):
         """
-        Subscribe to events.
+        Subscribe to events dynamically. Can be called multiple times.
 
         Args:
             h3_cells: H3 cell indices to subscribe to.
@@ -97,7 +97,7 @@ class RealtimeClient:
         self._subscribed = True
 
     async def __aiter__(self) -> AsyncIterator[Event]:
-        """Iterate over incoming events."""
+        """Iterate over incoming events, ignoring Ack and Error messages."""
         if not self._ws:
             raise RuntimeError("Not connected. Call connect() first.")
         if not self._subscribed:
@@ -106,6 +106,13 @@ class RealtimeClient:
         async for message in self._ws:
             try:
                 data = json.loads(message)
+                # Ignore control messages
+                msg_type = data.get("type", "")
+                if msg_type in ("SubscribeAck", "Error"):
+                    if msg_type == "Error":
+                        print(f"Server Error: {data.get('message')}")
+                    continue
+                    
                 yield Event.from_dict(data)
             except (json.JSONDecodeError, KeyError, ValueError):
                 continue
@@ -121,6 +128,12 @@ class RealtimeClient:
             message = await self._ws.recv()
             try:
                 data = json.loads(message)
+                msg_type = data.get("type", "")
+                if msg_type in ("SubscribeAck", "Error"):
+                    if msg_type == "Error":
+                        print(f"Server Error: {data.get('message')}")
+                    continue
+                    
                 return Event.from_dict(data)
             except (json.JSONDecodeError, KeyError, ValueError):
                 continue
