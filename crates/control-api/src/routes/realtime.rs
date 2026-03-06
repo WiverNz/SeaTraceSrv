@@ -9,6 +9,7 @@ use futures_util::stream::StreamExt;
 use serde::{Deserialize, Serialize};
 
 use crate::{lod::Lod, state::AppState};
+use tracing::info;
 
 /// Message sent by the client to establish or update a subscription.
 #[derive(Debug, Deserialize)]
@@ -41,11 +42,14 @@ pub async fn realtime_handler(
 }
 
 async fn handle_socket(mut socket: WebSocket, state: AppState) {
-    let client_id = uuid::Uuid::new_v4().to_string();
-    
+    let client_id = uuid::Uuid::new_v4();
+    let short_id = &client_id.to_string()[..8];
+    info!(client_id = short_id, "WebSocket client connected");
+
     // Create an empty subscription out of the gate to get the receiver channel.
     // The client will receive nothing until they send a SubscribeMessage.
-    let mut rx = state.broadcaster.subscribe(&client_id, vec![]).await;
+    let client_id_str = client_id.to_string();
+    let mut rx = state.broadcaster.subscribe(&client_id_str, vec![]).await;
     let mut active_lods: Vec<Lod> = vec![];
 
     loop {
@@ -98,7 +102,18 @@ async fn handle_socket(mut socket: WebSocket, state: AppState) {
                                 
                                 // Update subscription in the broadcaster
                                 let cells_count = sub.h3_cells.len();
-                                state.broadcaster.update_subscription(&client_id, sub.h3_cells).await;
+                                let lod_str = if sub.lod.is_empty() {
+                                    "vessels only".to_string()
+                                } else {
+                                    sub.lod.iter().map(|l| format!("{:?}", l)).collect::<Vec<_>>().join(", ")
+                                };
+                                info!(
+                                    client_id = short_id,
+                                    cells = if cells_count == 0 { "wildcard".to_string() } else { cells_count.to_string() },
+                                    lod = lod_str,
+                                    "Client subscribed"
+                                );
+                                state.broadcaster.update_subscription(&client_id_str, sub.h3_cells).await;
                                 
                                 // Send Ack
                                 let ack = SubscribeAck {
@@ -128,4 +143,6 @@ async fn handle_socket(mut socket: WebSocket, state: AppState) {
             }
         }
     }
+
+    info!(client_id = short_id, "WebSocket client disconnected");
 }
