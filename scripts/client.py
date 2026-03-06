@@ -148,12 +148,21 @@ def sources_command(args):
 
 
 def main():
+    # Shared parent parser so --host/--port can appear before OR after the subcommand
+    connection_parser = argparse.ArgumentParser(add_help=False)
+    connection_parser.add_argument("--host", "-H", default="asgard.fritz.box",
+                                   help="Server hostname (default: asgard.fritz.box)")
+    connection_parser.add_argument("--port", "-p", type=int, default=8080,
+                                   help="Server port (default: 8080)")
+
     parser = argparse.ArgumentParser(
         description="SeaTraceSrv Client — Real-time vessel tracking",
         formatter_class=argparse.RawDescriptionHelpFormatter,
+        parents=[connection_parser],
         epilog="""
 examples:
   python client.py stream
+  python client.py stream --host asgard.fritz.box --port 8080
   python client.py stream --lod weather_current
   python client.py stream --lod weather_current weather_hourly --verbose
   python client.py stream --cells 608431123508232191 --lod weather_current
@@ -162,15 +171,11 @@ examples:
         """,
     )
 
-    parser.add_argument("--host", "-H", default="asgard.fritz.box",
-                        help="Server hostname (default: asgard.fritz.box)")
-    parser.add_argument("--port", "-p", type=int, default=8080,
-                        help="Server port (default: 8080)")
-
     subparsers = parser.add_subparsers(dest="command")
 
     # stream
-    stream_parser = subparsers.add_parser("stream", help="Stream real-time events")
+    stream_parser = subparsers.add_parser("stream", help="Stream real-time events",
+                                         parents=[connection_parser])
     stream_parser.add_argument(
         "--cells", "-c", type=int, nargs="*", default=[],
         help="H3 cell indices to subscribe to (empty = all events)",
@@ -192,10 +197,12 @@ examples:
                                help="Stop after receiving N events")
 
     # health
-    subparsers.add_parser("health", help="Check service health")
+    subparsers.add_parser("health", help="Check service health",
+                          parents=[connection_parser])
 
     # sources
-    subparsers.add_parser("sources", help="List data sources")
+    subparsers.add_parser("sources", help="List data sources",
+                          parents=[connection_parser])
 
     args = parser.parse_args()
 
