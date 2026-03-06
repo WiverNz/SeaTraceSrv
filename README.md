@@ -74,6 +74,11 @@ Real-time maritime vessel tracking server that ingests AIS (Automatic Identifica
    cargo run
    ```
 
+   Or load `.env` inline without a shell plugin:
+   ```bash
+   set -a && source .env && set +a && cargo run
+   ```
+
 ## Configuration
 
 | Variable | Required | Default | Description |
