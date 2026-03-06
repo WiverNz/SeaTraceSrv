@@ -6,7 +6,7 @@ use futures_util::{SinkExt, StreamExt};
 use h3o::{LatLng, Resolution};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio_tungstenite::{connect_async_tls_with_config, tungstenite::Message};
 use tracing::{debug, info, warn};
 use uuid::Uuid;
@@ -114,6 +114,10 @@ impl AisStreamConfig {
 const AISSTREAM_URL: &str = "wss://stream.aisstream.io/v0/stream";
 const INITIAL_BACKOFF: Duration = Duration::from_secs(2);
 const MAX_BACKOFF: Duration = Duration::from_secs(60);
+/// How often we send a Ping frame to keep the connection alive.
+const PING_INTERVAL: Duration = Duration::from_secs(30);
+/// If a session lasted at least this long we consider it healthy and reset the backoff.
+const HEALTHY_SESSION: Duration = Duration::from_secs(60);
 
 /// Connects to AISStream, streams vessel position reports and pushes them as
 /// [`Event`]s into the shared [`Broadcaster`].
@@ -133,6 +137,7 @@ impl AisStreamConnector {
         let mut backoff = INITIAL_BACKOFF;
 
         loop {
+            let session_start = Instant::now();
             match self.connect_and_stream().await {
                 Ok(()) => {
                     info!("AISStream connection closed cleanly, reconnecting…");
@@ -140,6 +145,11 @@ impl AisStreamConnector {
                 Err(e) => {
                     warn!("AISStream error: {:#}. Reconnecting in {:?}…", e, backoff);
                 }
+            }
+
+            // Reset backoff if the session was healthy long enough.
+            if session_start.elapsed() >= HEALTHY_SESSION {
+                backoff = INITIAL_BACKOFF;
             }
 
             tokio::time::sleep(backoff).await;
@@ -173,46 +183,67 @@ impl AisStreamConnector {
             .context("Failed to send subscription message")?;
 
         info!("Subscription sent, streaming messages…");
-        backoff_reset();
 
         let mut msg_count = 0u64;
-        while let Some(raw) = ws.next().await {
-            let raw = raw.context("WebSocket receive error")?;
+        let mut ping_ticker = tokio::time::interval(PING_INTERVAL);
+        ping_ticker.tick().await; // consume the immediate first tick
 
-            match raw {
-                Message::Text(text) => {
-                    msg_count += 1;
-                    if msg_count <= 3 {
-                        debug!("Received text message #{}: {} bytes", msg_count, text.len());
-                    }
-                    if let Err(e) = self.handle_message(&text).await {
-                        debug!("Failed to handle AIS message: {:#}", e);
-                    }
+        loop {
+            tokio::select! {
+                // Periodic keepalive ping
+                _ = ping_ticker.tick() => {
+                    debug!("Sending keepalive Ping");
+                    ws.send(Message::Ping(vec![].into()))
+                        .await
+                        .context("Failed to send keepalive Ping")?;
                 }
-                Message::Binary(data) => {
-                    // AISStream may send JSON as binary frames
-                    msg_count += 1;
-                    if msg_count <= 3 {
-                        debug!("Received binary message #{}: {} bytes", msg_count, data.len());
-                    }
-                    if let Ok(text) = String::from_utf8(data) {
-                        if let Err(e) = self.handle_message(&text).await {
-                            debug!("Failed to handle AIS message: {:#}", e);
+
+                // Incoming message from AISStream
+                msg = ws.next() => {
+                    let raw = match msg {
+                        Some(r) => r.context("WebSocket receive error")?,
+                        None => break, // stream ended
+                    };
+
+                    match raw {
+                        Message::Text(text) => {
+                            msg_count += 1;
+                            if msg_count <= 3 {
+                                debug!("Received text message #{}: {} bytes", msg_count, text.len());
+                            }
+                            if let Err(e) = self.handle_message(&text).await {
+                                debug!("Failed to handle AIS message: {:#}", e);
+                            }
                         }
-                    } else {
-                        debug!("Received non-UTF8 binary message");
+                        Message::Binary(data) => {
+                            // AISStream may send JSON as binary frames
+                            msg_count += 1;
+                            if msg_count <= 3 {
+                                debug!("Received binary message #{}: {} bytes", msg_count, data.len());
+                            }
+                            if let Ok(text) = String::from_utf8(data) {
+                                if let Err(e) = self.handle_message(&text).await {
+                                    debug!("Failed to handle AIS message: {:#}", e);
+                                }
+                            } else {
+                                debug!("Received non-UTF8 binary message");
+                            }
+                        }
+                        Message::Ping(data) => {
+                            debug!("Received Ping, sending Pong");
+                            ws.send(Message::Pong(data)).await.ok();
+                        }
+                        Message::Pong(_) => {
+                            debug!("Received Pong (keepalive acknowledged)");
+                        }
+                        Message::Close(_) => {
+                            info!("AISStream sent Close frame");
+                            break;
+                        }
+                        _ => {
+                            debug!("Received other message type: {:?}", raw);
+                        }
                     }
-                }
-                Message::Ping(data) => {
-                    debug!("Received Ping, sending Pong");
-                    ws.send(Message::Pong(data)).await.ok();
-                }
-                Message::Close(_) => {
-                    info!("AISStream sent Close frame");
-                    break;
-                }
-                _ => {
-                    debug!("Received other message type: {:?}", raw);
                 }
             }
         }
@@ -281,9 +312,4 @@ impl AisStreamConnector {
     }
 }
 
-/// Separate fn so the borrow checker doesn't complain about capturing `backoff`
-/// inside the loop — it just signals in logs.
-fn backoff_reset() {
-    // On a successful connection+subscription, reset happens implicitly by
-    // the variable re-binding in `run()` on the next iteration.
-}
+
