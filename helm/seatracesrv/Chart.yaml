@@ -1,0 +1,13 @@
+apiVersion: v2
+name: seatracesrv
+description: Real-time maritime vessel tracking server (AIS → WebSocket)
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - ais
+  - maritime
+  - websocket
+  - tracking
+maintainers:
+  - name: askibin

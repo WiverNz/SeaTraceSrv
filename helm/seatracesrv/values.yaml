@@ -1,0 +1,88 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Image
+# ──────────────────────────────────────────────────────────────────────────────
+image:
+  repository: localhost:32000/seatracesrv
+  tag: latest
+  pullPolicy: IfNotPresent
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Deployment
+# ──────────────────────────────────────────────────────────────────────────────
+replicaCount: 1
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Application environment
+# ──────────────────────────────────────────────────────────────────────────────
+env:
+  BIND_ADDR: "0.0.0.0:8080"
+  RUST_LOG: "info"
+
+# Provide the API key in one of two ways (mutually exclusive):
+#   1. Inline (not recommended for production):
+#        secret.aisStreamApiKey: "your-key-here"
+#   2. Reference an existing secret:
+#        secret.existingSecret: "my-secret"
+#        secret.existingSecretKey: "AISSTREAM_API_KEY"
+secret:
+  aisStreamApiKey: ""        # set via --set or values override
+  existingSecret: ""         # name of a pre-existing k8s Secret
+  existingSecretKey: "AISSTREAM_API_KEY"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Service
+# ──────────────────────────────────────────────────────────────────────────────
+service:
+  type: ClusterIP
+  port: 8080
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Ingress (disabled by default)
+# ──────────────────────────────────────────────────────────────────────────────
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  host: seatracesrv.local
+  tls: []
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Resources
+# ──────────────────────────────────────────────────────────────────────────────
+resources:
+  requests:
+    cpu: "100m"
+    memory: "64Mi"
+  limits:
+    cpu: "500m"
+    memory: "256Mi"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Health probes
+# ──────────────────────────────────────────────────────────────────────────────
+livenessProbe:
+  httpGet:
+    path: /health
+    port: 8080
+  initialDelaySeconds: 5
+  periodSeconds: 15
+
+readinessProbe:
+  httpGet:
+    path: /health
+    port: 8080
+  initialDelaySeconds: 3
+  periodSeconds: 10
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Pod scheduling
+# ──────────────────────────────────────────────────────────────────────────────
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Pod annotations / labels
+# ──────────────────────────────────────────────────────────────────────────────
+podAnnotations: {}
+podLabels: {}

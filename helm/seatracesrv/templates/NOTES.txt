@@ -1,0 +1,19 @@
+SeaTraceSrv has been deployed!
+
+Service endpoint (within the cluster):
+  http://{{ include "seatracesrv.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.service.port }}
+
+Health check:
+  curl http://<node-ip>:{{ .Values.service.port }}/health
+
+{{- if eq .Values.service.type "NodePort" }}
+Get the NodePort:
+  microk8s kubectl -n {{ .Release.Namespace }} get svc {{ include "seatracesrv.fullname" . }}
+{{- end }}
+
+{{- if .Values.ingress.enabled }}
+Ingress host: http://{{ .Values.ingress.host }}
+{{- end }}
+
+WebSocket stream (Python client):
+  python scripts/client.py stream --host <node-ip> --port {{ .Values.service.port }}
