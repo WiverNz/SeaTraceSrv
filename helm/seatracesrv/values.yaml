@@ -33,8 +33,11 @@ secret:
 # Service
 # ──────────────────────────────────────────────────────────────────────────────
 service:
-  type: NodePort
+  type: ClusterIP
   port: 8080
+  # hostPort binds the container port directly to the node's IP address.
+  # This is convenient for single-node development clusters without an ingress.
+  hostPort: 8080
   # If type is NodePort, this is the port exposed on the host machine
   nodePort: 30080
 
