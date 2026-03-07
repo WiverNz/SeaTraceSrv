@@ -33,8 +33,10 @@ secret:
 # Service
 # ──────────────────────────────────────────────────────────────────────────────
 service:
-  type: ClusterIP
+  type: NodePort
   port: 8080
+  # If type is NodePort, this is the port exposed on the host machine
+  nodePort: 30080
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Ingress (disabled by default)
