@@ -1,0 +1,80 @@
+{
+  "version": 8,
+  "name": "SeaTrace Nautical",
+  "glyphs": "https://fonts.openmaptiles.org/{fontstack}/{range}.pbf",
+  "sources": {
+    "osm-raster": {
+      "type": "raster",
+      "tiles": [
+        "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+      ],
+      "tileSize": 256,
+      "maxzoom": 19,
+      "attribution": "© <a href='https://openstreetmap.org/copyright'>OpenStreetMap contributors</a>"
+    },
+    "openseamap-raster": {
+      "type": "raster",
+      "tiles": [
+        "https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png"
+      ],
+      "tileSize": 256,
+      "minzoom": 9,
+      "maxzoom": 18,
+      "attribution": "© <a href='https://www.openseamap.org'>OpenSeaMap contributors</a>"
+    },
+    "ships": {
+      "type": "geojson",
+      "data": {
+        "type": "FeatureCollection",
+        "features": []
+      }
+    }
+  },
+  "layers": [
+    {
+      "id": "osm-base",
+      "type": "raster",
+      "source": "osm-raster",
+      "layout": { "visibility": "visible" }
+    },
+    {
+      "id": "openseamap-overlay",
+      "type": "raster",
+      "source": "openseamap-raster",
+      "layout": { "visibility": "visible" },
+      "paint": {
+        "raster-opacity": 1.0
+      }
+    },
+    {
+      "id": "ships-circles",
+      "type": "circle",
+      "source": "ships",
+      "layout": { "visibility": "visible" },
+      "paint": {
+        "circle-radius": 6,
+        "circle-color": "#0066CC",
+        "circle-stroke-width": 1.5,
+        "circle-stroke-color": "#FFFFFF"
+      }
+    },
+    {
+      "id": "ships-labels",
+      "type": "symbol",
+      "source": "ships",
+      "layout": {
+        "visibility": "visible",
+        "text-field": ["get", "mmsi_label"],
+        "text-size": 10,
+        "text-offset": [0, 1.6],
+        "text-optional": true,
+        "text-allow-overlap": false
+      },
+      "paint": {
+        "text-color": "#0066CC",
+        "text-halo-color": "#FFFFFF",
+        "text-halo-width": 1.5
+      }
+    }
+  ]
+}

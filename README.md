@@ -1,58 +1,70 @@
 # SeaTraceSrv
 
-Real-time maritime vessel tracking server that ingests AIS (Automatic Identification System) data and broadcasts events to clients via WebSocket. Clients can request enrichment **levels of detail (LOD)** to attach additional data — weather conditions, and more in the future — to each event.
+Real-time maritime vessel tracking system. Ingests AIS data, enriches vessel events, and streams them to clients over WebSocket. Ships are identified by a versioned Redis vessel catalog rebuilt by a dedicated worker. A native Android app renders vessels on an OpenSeaMap nautical chart.
 
 ## Features
 
 - **Real-time AIS data ingestion** from [AISStream.io](https://aisstream.io)
-- **Spatial indexing** using Uber's H3 hexagonal grid system
-- **Location-based subscriptions** — clients subscribe to specific geographic areas (H3 cells)
+- **Spatial indexing** using Uber's H3 hexagonal grid (resolution 7)
+- **Location-based subscriptions** — clients subscribe by H3 cell
 - **WebSocket streaming** for real-time event delivery
-- **Level of Detail (LOD)** — opt-in per-event enrichment (weather, and future: water conditions, depth, currents)
-- **HTTP API** for health checks and snapshots
+- **Level of Detail (LOD)** — opt-in enrichment (weather, and future: vessel metadata, depth)
+- **Redis vessel catalog** — versioned MMSI→metadata lookup; atomic version switching, rollback support
+- **Catalog worker** — separate process that builds and publishes the vessel catalog and downloads nautical chart data
+- **Android app** — native Kotlin app with MapLibre + OpenSeaMap + live AIS overlay
 - **Python client library & CLI** for scripting and testing
-- **Android SDK** for mobile integration (Kotlin, Coroutines/Flow)
 
 ## Architecture
 
 ```
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│   AISStream.io  │────►│   Connectors    │────►│    Delivery     │
-│   (WebSocket)   │     │  (AIS Parser)   │     │  (Broadcaster)  │
-└─────────────────┘     └─────────────────┘     └────────┬────────┘
-                                                         │
-                               H3 Spatial Index ─────────┤
-                                                         │
-                                                         ▼
-                        ┌─────────────────┐     ┌─────────────────┐     ┌──────────────┐
-                        │     Clients     │◄────│   Control API   │◄────│  Open-Meteo  │
-                        │  (WebSocket)    │     │  (Axum Server)  │     │  (Weather)   │
-                        └─────────────────┘     └─────────────────┘     └──────────────┘
+AISStream.io ──WS──► connectors ──► delivery ──► control-api ──► Android app
+                                       │              │               │
+                                  H3 res-7        Redis pool     MapLibre
+                                  spatial         ↕              OpenSeaMap
+                                  index    vessel_catalog:*       overlay
+                                                   ↑
+                                           catalog-worker
+                                           (hourly rebuild)
+                                                   │
+                                           external sources
+                                           (ITU MARS, …)
 ```
 
-### Workspace Structure
+Full system design: [`docs/architecture.md`](docs/architecture.md)
+Vessel catalog design: [`docs/vessel-catalog.md`](docs/vessel-catalog.md)
+
+### Rust workspace crates
 
 | Crate | Description |
 |-------|-------------|
 | `core-model` | Data models generated from OpenAPI spec via Progenitor |
 | `connectors` | AISStream WebSocket client, H3 cell conversion |
 | `delivery` | `Broadcaster` trait, `InMemoryBroadcaster` with H3 routing |
-| `control-api` | Axum HTTP/WebSocket server, LOD enrichment pipeline |
+| `control-api` | Axum HTTP/WS server, LOD enrichment, vessel catalog lookup |
 | `aggregator` | Multi-source aggregation (placeholder) |
 | `data-store` | Persistence layer (placeholder) |
 | `integration-tests` | Cucumber BDD tests |
 
-### Client SDKs
+### Workers
 
 | Path | Language | Description |
 |------|----------|-------------|
-| `scripts/` | Python | Client library and CLI tool |
-| `seatrace-sdk-android/` | Kotlin | Android SDK (Coroutines/Flow) |
+| `workers/catalog-worker/` | Rust | Builds Redis vessel catalog; downloads GEBCO/NOAA ENC/EMODnet map data |
+
+### Client apps & SDKs
+
+| Path | Language | Description |
+|------|----------|-------------|
+| `android/seatrace/` | Kotlin | Full Android app — MapLibre map + AIS overlay + layer controls |
+| `seatrace-sdk-android/` | Kotlin | Reusable Android SDK (Coroutines/Flow) |
+| `scripts/` | Python | CLI client and Python library |
 
 ## Prerequisites
 
 - Rust 1.86+
 - [AISStream API key](https://aisstream.io)
+- Redis 7+ (for vessel catalog; the server starts without it but enrichment is disabled)
+- Android Studio Meerkat or later (for the Android app)
 
 ## Setup
 
@@ -277,6 +289,46 @@ cd seatrace-sdk-android
 ./gradlew :sdk:assembleRelease   # release AAR
 ./gradlew :sdk:testDebugUnitTest # unit tests
 ```
+
+## Catalog Worker
+
+The catalog worker is a standalone Rust binary that runs separately from the API server.
+It periodically fetches vessel data, writes versioned records into Redis, and atomically
+switches the active catalog version. Service pods read the active version and look up
+vessel metadata without any pod restart.
+
+```bash
+# Run locally (Redis must be accessible)
+REDIS_URL=redis://localhost:6379 cargo run -p catalog-worker
+
+# Build Docker image (from workspace root)
+docker build -f workers/catalog-worker/Dockerfile -t catalog-worker .
+
+# Run container
+docker run \
+  -e REDIS_URL=redis://redis:6379 \
+  -e CATALOG_REFRESH_INTERVAL_SECS=3600 \
+  -v /data:/data \
+  catalog-worker
+```
+
+See [`workers/catalog-worker/README.md`](workers/catalog-worker/README.md) for full documentation.
+
+## Android App
+
+`android/seatrace/` is the native Android application. It renders an OpenSeaMap nautical
+chart via MapLibre and overlays live AIS ship positions received from the server.
+
+```bash
+cd android/seatrace
+./gradlew :app:assembleDebug
+./gradlew :app:installDebug    # requires connected device or running emulator
+```
+
+The default WebSocket URL is `ws://10.0.2.2:8080` (emulator alias for the host machine).
+Change `WS_BASE_URL` in `app/build.gradle.kts` for a real device or production server.
+
+See [`android/seatrace/README.md`](android/seatrace/README.md) for full documentation.
 
 ## Docker
 

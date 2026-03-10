@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Full-screen dark marine theme — no action bar, edge-to-edge map. -->
+    <style name="Theme.SeaTrace" parent="Theme.Material3.Dark.NoActionBar">
+        <item name="colorPrimary">@color/sea_blue</item>
+        <item name="colorPrimaryVariant">@color/sea_blue_dark</item>
+        <item name="colorSecondary">@color/sea_blue_light</item>
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
+    </style>
+</resources>

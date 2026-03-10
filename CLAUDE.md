@@ -1,69 +1,218 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for Claude Code when working in this repository.
 
-## Build Commands
+---
+
+## Repository map
+
+```
+seatracesrv/
+├── src/main.rs                   Binary entry point (server)
+├── crates/                       Rust workspace crates (server-side)
+│   ├── core-model/               OpenAPI-generated data models
+│   ├── connectors/               AISStream WebSocket client
+│   ├── delivery/                 Broadcaster trait + InMemoryBroadcaster
+│   ├── control-api/              Axum HTTP/WS server + enrichment pipeline
+│   ├── aggregator/               Placeholder
+│   ├── data-store/               Placeholder
+│   └── integration-tests/        Cucumber BDD tests
+├── workers/
+│   └── catalog-worker/           Standalone binary — builds Redis vessel catalog
+├── android/
+│   └── seatrace/                 Android app (Kotlin, MapLibre, AIS overlay)
+├── seatrace-sdk-android/         Kotlin SDK (separate from the app — library only)
+├── scripts/                      Python client + CLI
+├── api-contracts/                OpenAPI + AsyncAPI specs
+├── helm/                         Kubernetes Helm chart
+└── Dockerfile                    Server image
+```
+
+---
+
+## Build commands
+
+### Rust server (workspace root)
 
 ```bash
-# Build entire workspace
+# Build entire Rust workspace
 cargo build
 
-# Run the server (requires AISSTREAM_API_KEY env var)
+# Run server (requires AISSTREAM_API_KEY + REDIS_URL)
 cargo run
 
-# Run all tests
+# All workspace tests
 cargo test --workspace
 
-# Run tests for a specific crate
+# Specific crates
 cargo test -p core-model
 cargo test -p delivery
+cargo test -p control-api
 
-# Run BDD integration tests (Cucumber)
+# BDD integration tests
 cargo test -p integration-tests --test cucumber
 cargo test -p integration-tests --test ws_cucumber
+
+# Build catalog-worker only
+cargo build -p catalog-worker
 ```
 
-## Environment Variables
+### Catalog worker Docker image
 
-Copy `.env.example` to `.env` before running:
-- `AISSTREAM_API_KEY` (required) - API key from aisstream.io
-- `BIND_ADDR` (optional, default: `0.0.0.0:8080`)
-- `RUST_LOG` (optional, default: `info`)
+Must be built from the **workspace root** (the Dockerfile copies the full workspace):
 
-## Architecture
-
-SeaTraceSrv is a real-time maritime vessel tracking system that ingests AIS data and broadcasts events to clients via WebSocket.
-
-```
-AISStream.io ──WebSocket──► connectors ──► delivery ──► control-api ──► Clients
-                                              │
-                                         H3 Spatial Index
+```bash
+docker build -f workers/catalog-worker/Dockerfile -t catalog-worker .
 ```
 
-### Workspace Crates
+### Android app
 
-| Crate | Purpose |
-|-------|---------|
-| `core-model` | Data models, auto-generated from `api-contracts/openapi.yaml` via Progenitor |
-| `connectors` | AISStream WebSocket client, converts positions to H3-indexed events |
-| `delivery` | `Broadcaster` trait and `InMemoryBroadcaster` for pub/sub by H3 cell |
-| `control-api` | Axum HTTP/WebSocket server with `/health`, `/sources`, `/snapshot`, `/realtime` |
-| `aggregator` | Placeholder for multi-source aggregation |
-| `data-store` | Placeholder for persistence |
-| `integration-tests` | Cucumber BDD tests |
+Open `android/seatrace/` in Android Studio, or from the command line:
 
-### Code Generation
+```bash
+cd android/seatrace
+./gradlew :app:assembleDebug          # build debug APK
+./gradlew :app:assembleRelease        # build release APK
+./gradlew :app:installDebug           # build + install on connected device/emulator
+./gradlew :app:connectedAndroidTest   # instrumented tests
+```
 
-`core-model` uses a build script (`crates/core-model/build.rs`) to generate Rust types from `api-contracts/openapi.yaml` at compile time. Generated code is written to `$OUT_DIR/api_generated.rs` and included via `include!` macro.
+---
 
-### Data Flow
+## Environment variables
 
-1. `AisStreamConnector` connects to AISStream WebSocket, parses AIS messages
-2. Positions are converted to `Event` with H3 cell index (resolution 7)
-3. Events are sent to the shared `Broadcaster`
-4. `InMemoryBroadcaster` routes events to clients subscribed to matching H3 cells
-5. `control-api` WebSocket handler streams events to connected clients
+### Server (`src/main.rs`)
 
-### Key Traits
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `AISSTREAM_API_KEY` | Yes | — | API key from aisstream.io |
+| `BIND_ADDR` | No | `0.0.0.0:8080` | Server listen address |
+| `REDIS_URL` | No | `redis://127.0.0.1:6379` | Redis connection string |
+| `RUST_LOG` | No | `info` | Log filter |
 
-- `Broadcaster` (in `delivery`): async trait for subscribe/broadcast operations, allows swapping implementations
+### Catalog worker (`workers/catalog-worker/`)
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `REDIS_URL` | No | `redis://127.0.0.1:6379` | Redis connection string |
+| `CATALOG_REFRESH_INTERVAL_SECS` | No | `3600` | Rebuild period |
+| `CATALOG_VERSIONS_TO_KEEP` | No | `3` | Old versions kept for rollback |
+| `DATA_DIR` | No | `/data` | Root for downloaded map/chart data |
+| `RUST_LOG` | No | `info` | Log filter |
+
+### Android app (`android/seatrace/app/build.gradle.kts`)
+
+`WS_BASE_URL` is a `BuildConfig` field — override in `build.gradle.kts`:
+
+```kotlin
+buildConfigField("String", "WS_BASE_URL", "\"ws://your-server:8080\"")
+```
+
+Default (`ws://10.0.2.2:8080`) is the Android emulator alias for the host machine.
+
+---
+
+## Architecture overview
+
+```
+AISStream.io ──WS──► connectors ──► delivery ──► control-api ──► Mobile clients
+                                       │              │
+                                  H3 res-7        Redis pool
+                                  spatial         ↕
+                                  index       vessel_catalog:*
+                                                   ↑
+                                           catalog-worker
+                                           (periodic rebuild)
+```
+
+Full diagram and data flows: [`docs/architecture.md`](docs/architecture.md).
+
+---
+
+## Key design decisions and gotchas
+
+### AppState factory
+
+`AppState::new()` requires a Redis pool and catalog version lock.
+**Always use the `create_app_state(broadcaster, redis_url)` factory** from `control-api::lib` —
+never construct `AppState` directly in `main.rs` or tests:
+
+```rust
+let state = create_app_state(broadcaster.clone(), &redis_url).await?;
+```
+
+The bb8 pool connects lazily, so this works in integration tests even without Redis running —
+catalog lookups just return `None` silently.
+
+### Redis async command return types
+
+The redis crate's async commands cannot infer the return type without an annotation.
+Always write:
+
+```rust
+let _: ()     = conn.hset_multiple(...).await.context("...")?;
+let _: ()     = conn.set(...).await.context("...")?;
+let _: usize  = conn.zadd(...).await.context("...")?;
+let _: usize  = conn.del(keys).await.context("...")?;
+```
+
+### H3 resolution consistency
+
+The server indexes events at **resolution 7** (`h3o` in Rust).
+The Android app subscribes at **resolution 7** (`H3-Java 4.1.1`).
+If you change the resolution anywhere, change it in both places:
+- Server: `crates/connectors/src/` (where `Event.h3_index` is set)
+- Android: `MapViewModel.kt` constant `H3_RESOLUTION`
+
+### Vessel catalog key schema
+
+```
+vessel_catalog:active_version           STRING   current version (RFC3339 timestamp)
+vessel_catalog:versions                 ZSET     score=unix-ts, member=version
+vessel_catalog:version:{v}:meta         HASH     status, record_count, source, …
+vessel_catalog:version:{v}:mmsi:{mmsi}  HASH     vessel fields
+```
+
+Service pods poll `active_version` every 5 s (see `vessel_catalog.rs`).
+Workers write all records under a new version before flipping `active_version` (atomic switch).
+
+### Adding a vessel data source
+
+1. Create `workers/catalog-worker/src/sources/your_source.rs`
+2. Implement the `VesselSource` trait (one async `fetch()` method)
+3. Register it in `workers/catalog-worker/src/main.rs` `vessel_sources` vec
+
+### Adding a map data source
+
+1. Create `workers/catalog-worker/src/maps/your_source.rs`
+2. Implement the `MapSource` trait
+3. Register in `main.rs` `map_sources` vec and handle the name in `maps::run_all()`
+
+### Android map style
+
+The MapLibre style is `android/seatrace/app/src/main/assets/style_nautical.json`.
+The `"ships"` GeoJSON source is defined there with empty initial data.
+`ShipLayerManager.update()` replaces its data at runtime — no style reload needed.
+
+To add a new map layer (e.g. depth contours), add a source + layer entry to the JSON
+and expose a toggle in `MapViewModel` + `LayersBottomSheet`.
+
+### Code generation (core-model)
+
+`crates/core-model/build.rs` generates Rust types from `api-contracts/openapi.yaml`
+at compile time using Progenitor. If you change the OpenAPI spec, run `cargo build`
+and the generated code in `$OUT_DIR/api_generated.rs` rebuilds automatically.
+
+---
+
+## Testing notes
+
+Integration tests spin up a real Axum server on a random port.
+They call `create_app_state(broadcaster, "redis://127.0.0.1:6379").await.unwrap()` —
+this works without Redis because bb8 pools connect lazily.
+
+The `e2e_real_data` test requires `AISSTREAM_API_KEY` and is `#[ignore]` by default:
+
+```bash
+cargo test -p integration-tests --test e2e_real_data -- --ignored
+```

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Brand -->
+    <color name="sea_blue">#FF0066CC</color>
+    <color name="sea_blue_dark">#FF004A99</color>
+    <color name="sea_blue_light">#FF3399FF</color>
+
+    <!-- FABs -->
+    <color name="fab_background">#FFFFFFFF</color>
+    <color name="fab_icon">#FF0066CC</color>
+
+    <!-- Status bar -->
+    <color name="status_bar_background">#CC333333</color>
+    <color name="status_bar_text">#FFFFFFFF</color>
+
+    <!-- Attribution overlay -->
+    <color name="attribution_background">#99FFFFFF</color>
+    <color name="attribution_text">#FF000000</color>
+</resources>

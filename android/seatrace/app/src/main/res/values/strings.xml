@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">SeaTrace</string>
+
+    <!-- FAB content descriptions -->
+    <string name="fab_location_desc">My location</string>
+    <string name="fab_layers_desc">Toggle layers</string>
+
+    <!-- Layer bottom sheet -->
+    <string name="layers_title">Map Layers</string>
+    <string name="layer_nautical">Nautical Chart (OpenSeaMap)</string>
+    <string name="layer_ships">Live Ships (AIS)</string>
+
+    <!-- Status bar -->
+    <string name="status_connecting">Connecting to server…</string>
+    <string name="status_disconnected">Disconnected</string>
+    <string name="status_error">Connection error: %1$s</string>
+
+    <!-- Location -->
+    <string name="location_permission_denied">Location permission denied — cannot show your position.</string>
+    <string name="location_unavailable">Location not available yet.</string>
+
+    <!-- Legal -->
+    <string name="not_for_navigation">⚠ Not for navigation. For situational awareness only.</string>
+    <string name="attribution">© OpenStreetMap contributors · © OpenSeaMap contributors</string>
+</resources>

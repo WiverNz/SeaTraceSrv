@@ -1,0 +1,35 @@
+# ── Build outputs ─────────────────────────────────────────────────────────────
+build/
+app/build/
+**/build/
+
+# ── Gradle ────────────────────────────────────────────────────────────────────
+.gradle/
+local.properties
+gradle/wrapper/gradle-wrapper.jar
+
+# ── Android Studio / IntelliJ ─────────────────────────────────────────────────
+.idea/
+*.iml
+*.ipr
+*.iws
+.DS_Store
+
+# ── Keystore / signing ────────────────────────────────────────────────────────
+*.jks
+*.keystore
+keystore.properties
+
+# ── Generated / captured ──────────────────────────────────────────────────────
+captures/
+generated/
+out/
+
+# ── NDK / CMake ───────────────────────────────────────────────────────────────
+.cxx/
+*.so
+obj/
+
+# ── Lint ──────────────────────────────────────────────────────────────────────
+lint/
+*.sarif
