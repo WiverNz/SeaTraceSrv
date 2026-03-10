@@ -9,7 +9,7 @@
 //! Run with: cargo test -p integration-tests --test e2e_real_data -- --ignored
 
 use connectors::{AisStreamConfig, AisStreamConnector};
-use control_api::{create_router, AppState};
+use control_api::{create_app_state, create_router};
 use core_model::{api::types::EventPayload, Event};
 use delivery::{Broadcaster, InMemoryBroadcaster};
 use futures_util::{SinkExt, StreamExt};
@@ -57,7 +57,9 @@ async fn test_real_aisstream_data_e2e() {
     let port = listener.local_addr().unwrap().port();
     println!("Test server listening on port {}", port);
 
-    let state = AppState::new(broadcaster.clone());
+    let state = create_app_state(broadcaster.clone(), "redis://127.0.0.1:6379")
+        .await
+        .expect("Failed to create AppState");
     let router = create_router(state);
 
     // Spawn the server
@@ -214,7 +216,9 @@ async fn test_health_endpoint_with_real_service() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
 
-    let state = AppState::new(broadcaster.clone());
+    let state = create_app_state(broadcaster.clone(), "redis://127.0.0.1:6379")
+        .await
+        .expect("Failed to create AppState");
     let router = create_router(state);
 
     tokio::spawn(async move {

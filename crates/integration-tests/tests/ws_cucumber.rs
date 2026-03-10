@@ -4,7 +4,7 @@ use delivery::{Broadcaster, InMemoryBroadcaster};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::net::TcpListener;
-use control_api::{create_router, AppState};
+use control_api::{create_app_state, create_router};
 use futures_util::{sink::SinkExt, stream::StreamExt};
 use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
 
@@ -20,7 +20,9 @@ async fn start_axum_server(world: &mut SeaTraceWsWorld) {
     let broadcaster = Arc::new(InMemoryBroadcaster::default());
     world.broadcaster = Some(broadcaster.clone());
 
-    let state = AppState::new(broadcaster.clone() as Arc<dyn Broadcaster>);
+    let state = create_app_state(broadcaster.clone() as Arc<dyn Broadcaster>, "redis://127.0.0.1:6379")
+        .await
+        .expect("Failed to create AppState");
     let app = create_router(state);
 
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();

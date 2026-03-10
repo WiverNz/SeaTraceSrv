@@ -17,6 +17,7 @@ replicaCount: 1
 env:
   BIND_ADDR: "0.0.0.0:8080"
   RUST_LOG: "info"
+  REDIS_URL: "redis://127.0.0.1:6379"
 
 # Provide the API key in one of two ways (mutually exclusive):
 #   1. Inline (not recommended for production):
