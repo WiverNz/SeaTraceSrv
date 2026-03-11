@@ -57,21 +57,38 @@ async fn main() -> Result<()> {
     // ── Build + refresh loop ──────────────────────────────────────────────────
     let catalog = CatalogBuilder::new(pool, vessel_sources, cfg.versions_to_keep);
 
-    loop {
-        // Vessel catalog
-        if let Err(e) = catalog.build().await {
-            error!("catalog build failed: {:#}", e);
+    if cfg.run_once {
+        let ok = run_cycle(&catalog, &data_dir, &map_sources).await;
+        info!("run_once=true: build complete, exiting");
+        if !ok {
+            std::process::exit(1);
         }
+        return Ok(());
+    }
 
-        // Map data
-        run_maps(&data_dir, &map_sources).await;
-
+    loop {
+        run_cycle(&catalog, &data_dir, &map_sources).await;
         info!(
             "sleeping for {} seconds until next run",
             cfg.refresh_interval.as_secs()
         );
         tokio::time::sleep(cfg.refresh_interval).await;
     }
+}
+
+/// Run one full build cycle. Returns true if all steps succeeded.
+async fn run_cycle(
+    catalog: &CatalogBuilder,
+    data_dir: &Path,
+    map_sources: &[Box<dyn MapSource>],
+) -> bool {
+    let mut ok = true;
+    if let Err(e) = catalog.build().await {
+        error!("catalog build failed: {:#}", e);
+        ok = false;
+    }
+    run_maps(data_dir, map_sources).await;
+    ok
 }
 
 async fn run_maps(data_dir: &Path, sources: &[Box<dyn MapSource>]) {

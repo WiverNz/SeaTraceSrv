@@ -92,3 +92,59 @@ affinity: {}
 # ──────────────────────────────────────────────────────────────────────────────
 podAnnotations: {}
 podLabels: {}
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Catalog Worker
+# ──────────────────────────────────────────────────────────────────────────────
+catalogWorker:
+  enabled: false
+
+  image:
+    repository: localhost:32000/catalog-worker
+    tag: latest
+    pullPolicy: IfNotPresent
+
+  # "CronJob" (recommended) — Kubernetes handles scheduling; worker runs once
+  #   per invocation and exits.
+  # "Deployment"            — Worker runs continuously with its own refresh loop.
+  kind: CronJob
+
+  # CronJob-only settings (ignored when kind=Deployment)
+  schedule: "0 3 * * *"          # daily at 03:00 UTC
+  concurrencyPolicy: Forbid       # prevent overlapping jobs
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+
+  env:
+    REDIS_URL: "redis://127.0.0.1:6379"
+    DATA_DIR: "/data"
+    RUST_LOG: "info"
+    # How many catalog versions to keep in Redis (oldest pruned).
+    CATALOG_VERSIONS_TO_KEEP: "3"
+    # Deployment mode only — how often to rebuild (seconds).
+    CATALOG_REFRESH_INTERVAL_SECS: "3600"
+
+  # Extra env vars (passed as a list of {name, value} or {name, valueFrom} objects)
+  extraEnv: []
+
+  resources:
+    requests:
+      cpu: "200m"
+      memory: "256Mi"
+    limits:
+      cpu: "1000m"
+      memory: "1Gi"
+
+  # Persistent volume for downloaded map data (GEBCO, NOAA ENC, EMODnet).
+  # Disable if you do not need local map data storage.
+  persistence:
+    enabled: false
+    size: 10Gi
+    accessMode: ReadWriteOnce
+    storageClass: ""              # leave empty to use the cluster default
+
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  podAnnotations: {}
+  podLabels: {}

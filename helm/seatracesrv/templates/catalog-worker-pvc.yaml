@@ -1,0 +1,17 @@
+{{- if and .Values.catalogWorker.enabled .Values.catalogWorker.persistence.enabled -}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "catalogWorker.fullname" . }}-data
+  labels:
+    {{- include "catalogWorker.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.catalogWorker.persistence.accessMode }}
+  resources:
+    requests:
+      storage: {{ .Values.catalogWorker.persistence.size }}
+  {{- if .Values.catalogWorker.persistence.storageClass }}
+  storageClassName: {{ .Values.catalogWorker.persistence.storageClass }}
+  {{- end }}
+{{- end }}
