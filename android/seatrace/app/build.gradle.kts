@@ -46,7 +46,7 @@ dependencies {
 
     // ── H3 spatial index (matches server-side h3o resolution) ────────────────
     // Note: uses JNI native libs — verify ABI filters above match your devices.
-    implementation("com.uber.h3:h3:4.1.1")
+    implementation("com.uber:h3:4.1.1")
 
     // ── Networking ───────────────────────────────────────────────────────────
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
