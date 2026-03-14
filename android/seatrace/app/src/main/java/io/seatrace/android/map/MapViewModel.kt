@@ -120,7 +120,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
             LatLng(southLat, westLon),
         )
         core.polygonToCells(ring, emptyList(), H3_RESOLUTION)
-    } catch (e: Exception) {
+    } catch (e: Throwable) {
         Log.e(TAG, "H3 polyfill failed: ${e.message}")
         emptyList()
     }
