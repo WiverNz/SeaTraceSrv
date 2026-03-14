@@ -109,10 +109,10 @@ class MainActivity : AppCompatActivity() {
     private fun notifyViewport(map: MapLibreMap) {
         val bounds = map.projection.visibleRegion.latLngBounds
         viewModel.onViewportChanged(
-            northLat = bounds.latNorth,
-            southLat = bounds.latSouth,
-            eastLon  = bounds.lonEast,
-            westLon  = bounds.lonWest,
+            northLat = bounds.getLatNorth(),
+            southLat = bounds.getLatSouth(),
+            eastLon  = bounds.getLonEast(),
+            westLon  = bounds.getLonWest(),
         )
     }
 
