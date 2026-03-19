@@ -22,6 +22,13 @@ import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.location.LocationComponentActivationOptions
 import org.maplibre.android.location.modes.CameraMode
 import org.maplibre.android.location.modes.RenderMode
+import android.app.PendingIntent
+import android.os.Looper
+import org.maplibre.android.location.engine.LocationEngine
+import org.maplibre.android.location.engine.LocationEngineCallback
+import org.maplibre.android.location.engine.LocationEngineDefault
+import org.maplibre.android.location.engine.LocationEngineRequest
+import org.maplibre.android.location.engine.LocationEngineResult
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.Style
 import org.maplibre.android.style.layers.PropertyFactory
@@ -37,7 +44,9 @@ class MainActivity : AppCompatActivity() {
     // ── Permission request ────────────────────────────────────────────────────
 
     private val locationPermissionRequest =
-        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
+            val granted = result.getOrDefault(Manifest.permission.ACCESS_FINE_LOCATION, false) ||
+                          result.getOrDefault(Manifest.permission.ACCESS_COARSE_LOCATION, false)
             if (granted) enableLocationComponent()
             else Toast.makeText(this, R.string.location_permission_denied, Toast.LENGTH_SHORT).show()
         }
@@ -119,11 +128,16 @@ class MainActivity : AppCompatActivity() {
     // ── Location component ────────────────────────────────────────────────────
 
     private fun requestLocationPermission() {
-        when {
-            ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
-                    == PackageManager.PERMISSION_GRANTED -> enableLocationComponent()
+        val fineGranted = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        val coarseGranted = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
 
-            else -> locationPermissionRequest.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+        if (fineGranted || coarseGranted) {
+            enableLocationComponent()
+        } else {
+            locationPermissionRequest.launch(arrayOf(
+                Manifest.permission.ACCESS_FINE_LOCATION,
+                Manifest.permission.ACCESS_COARSE_LOCATION
+            ))
         }
     }
 
@@ -131,8 +145,22 @@ class MainActivity : AppCompatActivity() {
         val map = mapLibreMap ?: return
         map.getStyle { style ->
             val lc = map.locationComponent
+
+            // Wrap the default LocationEngine to suppress "Last location unavailable" exceptions
+            val defaultEngine = LocationEngineDefault.getDefaultLocationEngine(this)
+            val safeEngine = SafeLocationEngine(defaultEngine)
+
+            // Configure the location engine request to ensure updates start properly.
+            val request = LocationEngineRequest.Builder(1000L)
+                .setPriority(LocationEngineRequest.PRIORITY_HIGH_ACCURACY)
+                .setMaxWaitTime(5000L)
+                .build()
+
             lc.activateLocationComponent(
-                LocationComponentActivationOptions.builder(this, style).build()
+                LocationComponentActivationOptions.builder(this, style)
+                    .locationEngine(safeEngine)
+                    .locationEngineRequest(request)
+                    .build()
             )
             lc.isLocationComponentEnabled = true
             lc.cameraMode  = CameraMode.NONE
@@ -146,7 +174,9 @@ class MainActivity : AppCompatActivity() {
         // Zoom to current location.
         binding.fabLocation.setOnClickListener {
             val lc = mapLibreMap?.locationComponent ?: return@setOnClickListener
-            val loc = lc.lastKnownLocation
+            // Check if activated before accessing lastKnownLocation to avoid internal crashes
+            val loc = if (lc.isLocationComponentActivated) lc.lastKnownLocation else null
+            
             if (loc != null) {
                 mapLibreMap?.animateCamera(
                     CameraUpdateFactory.newLatLngZoom(LatLng(loc.latitude, loc.longitude), 12.0)
@@ -209,5 +239,52 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+    }
+}
+
+/**
+ * A wrapper around MapLibre's LocationEngine that suppresses the "Last location unavailable" exception
+ * which is frequently thrown and logged as an error on app startup.
+ */
+class SafeLocationEngine(private val delegate: LocationEngine) : LocationEngine {
+    override fun getLastLocation(callback: LocationEngineCallback<LocationEngineResult>) {
+        delegate.getLastLocation(object : LocationEngineCallback<LocationEngineResult> {
+            override fun onSuccess(result: LocationEngineResult?) {
+                callback.onSuccess(result)
+            }
+
+            override fun onFailure(exception: Exception) {
+                if (exception.message?.contains("Last location unavailable") == true) {
+                    // Suppress known benign exception.
+                    // Returning null prevents the LocationComponent from logging a stacktrace.
+                    callback.onSuccess(null)
+                } else {
+                    callback.onFailure(exception)
+                }
+            }
+        })
+    }
+
+    override fun requestLocationUpdates(
+        request: LocationEngineRequest,
+        callback: LocationEngineCallback<LocationEngineResult>,
+        looper: Looper?
+    ) {
+        delegate.requestLocationUpdates(request, callback, looper)
+    }
+
+    override fun requestLocationUpdates(
+        request: LocationEngineRequest,
+        pendingIntent: PendingIntent
+    ) {
+        delegate.requestLocationUpdates(request, pendingIntent)
+    }
+
+    override fun removeLocationUpdates(callback: LocationEngineCallback<LocationEngineResult>) {
+        delegate.removeLocationUpdates(callback)
+    }
+
+    override fun removeLocationUpdates(pendingIntent: PendingIntent) {
+        delegate.removeLocationUpdates(pendingIntent)
     }
 }
