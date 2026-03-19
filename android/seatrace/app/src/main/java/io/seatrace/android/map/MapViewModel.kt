@@ -52,10 +52,28 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
     private var h3: H3Core? = null
 
     init {
-        // Receive ship updates from WebSocket and merge into the ships map.
+        val activeShips = java.util.concurrent.ConcurrentHashMap<Long, Ship>()
+
+        // Receive ship updates from WebSocket and accumulate them to avoid GC thrashing.
+        // The MapLibre map is only updated once per second instead of every single ship.
         viewModelScope.launch {
-            webSocket.ships.collect { ship ->
-                _ships.value = _ships.value + (ship.mmsi to ship)
+            var updated = false
+            
+            launch {
+                webSocket.ships.collect { ship ->
+                    activeShips[ship.mmsi] = ship
+                    updated = true
+                }
+            }
+            
+            launch {
+                while (true) {
+                    kotlinx.coroutines.delay(1000)
+                    if (updated) {
+                        _ships.value = activeShips.toMap()
+                        updated = false
+                    }
+                }
             }
         }
 
@@ -64,7 +82,20 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
             while (true) {
                 kotlinx.coroutines.delay(60_000)
                 val cutoff = System.currentTimeMillis() - SHIP_TTL_MS
-                _ships.value = _ships.value.filter { (_, s) -> s.lastSeen >= cutoff }
+                
+                var evicted = false
+                val iterator = activeShips.iterator()
+                while (iterator.hasNext()) {
+                    val entry = iterator.next()
+                    if (entry.value.lastSeen < cutoff) {
+                        iterator.remove()
+                        evicted = true
+                    }
+                }
+                
+                if (evicted) {
+                    _ships.value = activeShips.toMap()
+                }
             }
         }
 
