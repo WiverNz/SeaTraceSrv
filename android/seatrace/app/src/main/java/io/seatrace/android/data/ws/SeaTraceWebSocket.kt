@@ -137,15 +137,22 @@ class SeaTraceWebSocket(
 
     private fun parseMessage(text: String) {
         try {
+            Log.d(TAG, "raw msg (${text.length} chars): ${text.take(200)}")
             val envelope = json.decodeFromString<ServerEnvelope>(text)
             when (envelope.type) {
                 "SubscribeAck" -> Log.d(TAG, "subscription ack")
                 "Error"        -> Log.w(TAG, "server error: $text")
                 null -> {
                     // Vessel event
-                    val el = envelope.payload ?: return
+                    val el = envelope.payload ?: run {
+                        Log.w(TAG, "vessel event with null payload")
+                        return
+                    }
                     val payload = json.decodeFromJsonElement<VesselPositionPayload>(el)
-                    if (payload.type != "VesselPosition") return
+                    if (payload.type != "VesselPosition") {
+                        Log.w(TAG, "unknown payload type: ${payload.type}")
+                        return
+                    }
 
                     val ship = Ship(
                         mmsi     = payload.mmsi,
@@ -155,8 +162,10 @@ class SeaTraceWebSocket(
                         cog      = payload.cog,
                         lastSeen = envelope.timestamp ?: System.currentTimeMillis(),
                     )
+                    Log.d(TAG, "ship ${ship.mmsi} @ ${ship.lat},${ship.lon}")
                     scope.launch { _ships.emit(ship) }
                 }
+                else -> Log.w(TAG, "unknown envelope type: ${envelope.type}")
             }
         } catch (e: Exception) {
             Log.w(TAG, "parse error: ${e.message}")
