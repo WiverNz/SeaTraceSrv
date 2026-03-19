@@ -25,6 +25,13 @@ android {
         }
     }
 
+    sourceSets {
+        getByName("main") {
+            // Include dynamically extracted H3 libraries into the build
+            jniLibs.srcDir(layout.buildDirectory.dir("h3-jni").get().asFile)
+        }
+    }
+
     buildFeatures {
         viewBinding = true
         buildConfig = true
@@ -37,6 +44,44 @@ android {
 
     kotlinOptions {
         jvmTarget = "17"
+    }
+}
+
+// ── H3 Native Library Extraction ─────────────────────────────────────────────
+// The com.uber:h3 standard jar contains precompiled .so files inside "android-arm64" 
+// and "android-arm" folders within the jar. Android Gradle Plugin doesn't unpack 
+// jars (only AARs) automatically, so we dynamically extract them here.
+val extractH3NativeLibs by tasks.registering(Copy::class) {
+    // Only parse dependencies from the releaseCompileClasspath to avoid resolution issues.
+    dependsOn(configurations.getByName("releaseCompileClasspath"))
+    
+    doFirst {
+        val h3File = configurations.getByName("releaseCompileClasspath").files.find { 
+            it.name.startsWith("h3-") && it.extension == "jar" 
+        }
+        if (h3File != null) {
+            from(zipTree(h3File)) {
+                include("android-arm64/libh3-java.so")
+                include("android-arm/libh3-java.so")
+            }
+            into(layout.buildDirectory.dir("h3-jni"))
+            
+            eachFile {
+                if (path.startsWith("android-arm64")) {
+                    path = path.replaceFirst("android-arm64", "arm64-v8a")
+                } else if (path.startsWith("android-arm/")) {
+                    path = path.replaceFirst("android-arm", "armeabi-v7a")
+                }
+            }
+            includeEmptyDirs = false
+        }
+    }
+}
+
+// Ensure extraction happens before Android tasks process libraries
+tasks.configureEach {
+    if (name.startsWith("merge") && name.endsWith("JniLibFolders")) {
+        dependsOn(extractH3NativeLibs)
     }
 }
 
