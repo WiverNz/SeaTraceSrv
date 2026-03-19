@@ -144,11 +144,11 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
 
         // Bounding box as a closed polygon (counter-clockwise for H3 polyfill).
         val ring = listOf(
-            LatLng(southLat, westLon),
-            LatLng(northLat, westLon),
-            LatLng(northLat, eastLon),
-            LatLng(southLat, eastLon),
-            LatLng(southLat, westLon),
+            LatLng(southLat, westLon), // Bottom-Left
+            LatLng(southLat, eastLon), // Bottom-Right
+            LatLng(northLat, eastLon), // Top-Right
+            LatLng(northLat, westLon), // Top-Left
+            LatLng(southLat, westLon), // Bottom-Left
         )
         core.polygonToCells(ring, emptyList(), H3_RESOLUTION)
     } catch (e: Throwable) {
