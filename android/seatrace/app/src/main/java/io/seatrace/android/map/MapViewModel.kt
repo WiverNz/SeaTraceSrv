@@ -140,7 +140,10 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
         northLat: Double, southLat: Double,
         eastLon: Double,  westLon: Double,
     ): List<Long> = try {
-        val core = h3 ?: H3Core.newInstance().also { h3 = it }
+        val core = h3 ?: run {
+            System.setProperty("h3.system.library", "true")
+            H3Core.newInstance().also { h3 = it }
+        }
 
         // Bounding box as a closed polygon (counter-clockwise for H3 polyfill).
         val ring = listOf(
