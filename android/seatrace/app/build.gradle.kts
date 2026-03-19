@@ -17,7 +17,7 @@ android {
 
         // Override for a real device or production: set to your server URL.
         // 10.0.2.2 is the Android emulator's alias for the host machine.
-        buildConfigField("String", "WS_BASE_URL", "\"ws://asgard:8080\"")
+        buildConfigField("String", "WS_BASE_URL", "\"ws://asgard.fritz.box:8080\"")
 
         ndk {
             // H3-Java ships native .so files; include the ABIs your targets need.
