@@ -1,7 +1,7 @@
 {
   "version": 8,
   "name": "SeaTrace Nautical",
-  "glyphs": "https://fonts.openmaptiles.org/{fontstack}/{range}.pbf",
+  "glyphs": "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf",
   "sources": {
     "osm-raster": {
       "type": "raster",

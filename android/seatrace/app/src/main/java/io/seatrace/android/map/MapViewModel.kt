@@ -28,6 +28,13 @@ private const val H3_RESOLUTION = 7
  */
 private const val SHIP_TTL_MS = 5 * 60 * 1_000L // 5 minutes
 
+/**
+ * When the viewport produces more H3 cells than this, fall back to the
+ * server's wildcard subscription (empty cell list = receive ALL events)
+ * to avoid overwhelming both client and server.
+ */
+private const val MAX_H3_CELLS = 50_000
+
 data class LayerVisibility(
     val nauticalOverlay: Boolean = true,
     val ships: Boolean = true,
@@ -123,14 +130,24 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
      * Called whenever the visible map region changes.
      * Converts the bounding box to H3 cells and re-subscribes.
      */
+    private var lastCells: List<Long> = emptyList()
+
     fun onViewportChanged(
         northLat: Double, southLat: Double,
         eastLon: Double,  westLon: Double,
     ) {
         viewModelScope.launch {
-            val cells = computeH3Cells(northLat, southLat, eastLon, westLon)
-            if (cells.isNotEmpty()) {
-                Log.d(TAG, "viewport → ${cells.size} H3 cells")
+            val raw = computeH3Cells(northLat, southLat, eastLon, westLon)
+            // If the viewport is too large, use wildcard subscription.
+            val cells = if (raw.size > MAX_H3_CELLS) {
+                Log.d(TAG, "viewport has ${raw.size} cells — using wildcard subscription")
+                emptyList()
+            } else {
+                Log.d(TAG, "viewport → ${raw.size} H3 cells")
+                raw
+            }
+            if (cells != lastCells) {
+                lastCells = cells
                 webSocket.updateCells(cells)
             }
         }
