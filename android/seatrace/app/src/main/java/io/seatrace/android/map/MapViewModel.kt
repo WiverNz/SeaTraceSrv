@@ -130,7 +130,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
      * Called whenever the visible map region changes.
      * Converts the bounding box to H3 cells and re-subscribes.
      */
-    private var lastCells: List<Long> = emptyList()
+    private var lastCells: List<Long>? = null
 
     fun onViewportChanged(
         northLat: Double, southLat: Double,

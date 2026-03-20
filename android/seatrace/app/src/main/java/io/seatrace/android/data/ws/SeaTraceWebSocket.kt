@@ -59,7 +59,7 @@ class SeaTraceWebSocket(
         .build()
 
     private var socket: WebSocket? = null
-    private var pendingCells: List<Long> = emptyList()
+    private var pendingCells: List<Long>? = null
     private var reconnectDelay = INITIAL_RECONNECT_MS
     private var reconnectJob: Job? = null
 
@@ -80,6 +80,7 @@ class SeaTraceWebSocket(
     /**
      * Subscribe to a new set of H3 cells (resolution 7).
      * Replaces any previous subscription. Safe to call before connect().
+     * An empty list subscribes to ALL events (wildcard).
      */
     fun updateCells(cells: List<Long>) {
         pendingCells = cells
@@ -99,7 +100,7 @@ class SeaTraceWebSocket(
                 Log.i(TAG, "connected")
                 reconnectDelay = INITIAL_RECONNECT_MS
                 _state.value = WsState.Connected
-                if (pendingCells.isNotEmpty()) sendSubscription(ws, pendingCells)
+                pendingCells?.let { sendSubscription(ws, it) }
             }
 
             override fun onMessage(ws: WebSocket, text: String) {
