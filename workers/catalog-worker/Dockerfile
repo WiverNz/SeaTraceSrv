@@ -14,7 +14,7 @@ RUN apt-get update \
 COPY . .
 
 # Build only the catalog-worker binary in release mode.
-RUN cargo build --release --bin catalog-worker
+RUN cargo build --release -p catalog-worker
 
 # ── Stage 2: runtime ──────────────────────────────────────────────────────────
 FROM debian:bookworm-slim
