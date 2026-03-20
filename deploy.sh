@@ -50,7 +50,7 @@ microk8s helm3 upgrade --install "${RELEASE}" "${CHART}" \
   --set "catalogWorker.image.repository=${REGISTRY}/${WORKER}" \
   --set "catalogWorker.image.tag=${TAG}" \
   --set "catalogWorker.image.pullPolicy=IfNotPresent" \
-  --wait \
+  --atomic \
   --timeout 120s
 
 # ── 4. Done ───────────────────────────────────────────────────────────────────

@@ -7,6 +7,10 @@ metadata:
     {{- include "seatracesrv.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.replicaCount }}
+  {{- if .Values.service.hostPort }}
+  strategy:
+    type: Recreate
+  {{- end }}
   selector:
     matchLabels:
       {{- include "seatracesrv.selectorLabels" . | nindent 6 }}
