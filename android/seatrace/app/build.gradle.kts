@@ -19,16 +19,12 @@ android {
         // 10.0.2.2 is the Android emulator's alias for the host machine.
         buildConfigField("String", "WS_BASE_URL", "\"ws://asgard.fritz.box:8080\"")
 
-        ndk {
-            // H3-Java ships native .so files; include the ABIs your targets need.
-            abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
-        }
-    }
+        // Maximum viewport diagonal in kilometres. Viewports larger than this skip
+        // ship loading. Must match or exceed the server's MAX_VIEWPORT_KM setting.
+        buildConfigField("double", "MAX_VIEWPORT_KM", "10.0")
 
-    sourceSets {
-        getByName("main") {
-            // Include dynamically extracted H3 libraries into the build
-            jniLibs.srcDir(layout.buildDirectory.dir("h3-jni").get().asFile)
+        ndk {
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
         }
     }
 
@@ -47,55 +43,9 @@ android {
     }
 }
 
-// ── H3 Native Library Extraction ─────────────────────────────────────────────
-// The com.uber:h3 standard jar contains precompiled .so files inside "android-arm64" 
-// and "android-arm" folders within the jar. Android Gradle Plugin doesn't unpack 
-// jars (only AARs) automatically, so we dynamically extract them here.
-val extractH3NativeLibs by tasks.registering {
-    // Only parse dependencies from the releaseCompileClasspath to avoid resolution issues.
-    dependsOn(configurations.getByName("releaseCompileClasspath"))
-    
-    // Define the output directory so Gradle knows what this task produces
-    val outputDir = layout.buildDirectory.dir("h3-jni").get().asFile
-    outputs.dir(outputDir)
-    
-    doLast {
-        val h3File = configurations.getByName("releaseCompileClasspath").files.find { 
-            it.name.startsWith("h3-") && it.extension == "jar" 
-        }
-        if (h3File != null) {
-            copy {
-                from(zipTree(h3File)) {
-                    include("android-arm64/libh3-java.so")
-                    include("android-arm/libh3-java.so")
-                }
-                into(outputDir)
-                
-                eachFile {
-                    if (path.startsWith("android-arm64")) {
-                        path = path.replaceFirst("android-arm64", "arm64-v8a")
-                    } else if (path.startsWith("android-arm/")) {
-                        path = path.replaceFirst("android-arm", "armeabi-v7a")
-                    }
-                }
-                includeEmptyDirs = false
-            }
-        }
-    }
-}
-
-// Ensure extraction happens before Android tasks process libraries
-tasks.named("preBuild") {
-    dependsOn(extractH3NativeLibs)
-}
-
 dependencies {
     // ── Map ──────────────────────────────────────────────────────────────────
     implementation("org.maplibre.gl:android-sdk:11.7.0")
-
-    // ── H3 spatial index (matches server-side h3o resolution) ────────────────
-    // Note: uses JNI native libs — verify ABI filters above match your devices.
-    implementation("com.uber:h3:4.1.1")
 
     // ── Networking ───────────────────────────────────────────────────────────
     implementation("com.squareup.okhttp3:okhttp:4.12.0")

@@ -20,7 +20,7 @@ async fn start_axum_server(world: &mut SeaTraceWsWorld) {
     let broadcaster = Arc::new(InMemoryBroadcaster::default());
     world.broadcaster = Some(broadcaster.clone());
 
-    let state = create_app_state(broadcaster.clone() as Arc<dyn Broadcaster>, "redis://127.0.0.1:6379")
+    let state = create_app_state(broadcaster.clone() as Arc<dyn Broadcaster>, "redis://127.0.0.1:6379", 10_000.0)
         .await
         .expect("Failed to create AppState");
     let app = create_router(state);
@@ -38,42 +38,48 @@ async fn start_axum_server(world: &mut SeaTraceWsWorld) {
 async fn ws_client_connects(world: &mut SeaTraceWsWorld) {
     let port = world.server_port.unwrap();
     let url = format!("ws://127.0.0.1:{}/realtime", port);
-    
+
     let (ws_stream, _) = connect_async(&url).await.expect("Failed to connect");
     world.ws_stream = Some(ws_stream);
 }
 
-#[given(expr = "the client sends a subscription message for cell {int}")]
-async fn ws_client_subscribes(world: &mut SeaTraceWsWorld, cell: u64) {
+#[given(expr = "the client sends a viewport subscription north {float} south {float} east {float} west {float}")]
+async fn ws_client_subscribes(
+    world: &mut SeaTraceWsWorld,
+    north: f64,
+    south: f64,
+    east: f64,
+    west: f64,
+) {
     let ws = world.ws_stream.as_mut().unwrap();
     let sub_msg = serde_json::json!({
-        "h3_cells": [cell]
+        "viewport": { "north": north, "south": south, "east": east, "west": west }
     });
     ws.send(Message::Text(sub_msg.to_string())).await.unwrap();
 }
 
-#[when(expr = "the system receives a VesselPosition event for cell {int}")]
-async fn system_receives_event(world: &mut SeaTraceWsWorld, cell: u64) {
+#[when(expr = "the system receives a VesselPosition event at lat {float} lon {float}")]
+async fn system_receives_event(world: &mut SeaTraceWsWorld, lat: f64, lon: f64) {
     let _ts = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as i64;
-    
+
     let payload = EventPayloadVesselPosition {
         type_: core_model::api::types::EventPayloadVesselPositionType::VesselPosition,
         mmsi: 987654321,
-        lat: 56.4,
-        lon: 38.5,
+        lat,
+        lon,
         sog: None,
         cog: None,
     };
-    
+
     let event = Event {
         event_id: "evt-ws-123".to_string(),
-        h3_index: cell,
+        h3_index: 0,
         timestamp: _ts,
         source: "WS-Test".to_string(),
         confidence: 0.9,
         payload: core_model::api::types::EventPayload::VesselPosition(payload),
     };
-    
+
     let broadcaster = world.broadcaster.as_ref().unwrap();
     broadcaster.broadcast(event).await.unwrap();
 }
@@ -81,9 +87,7 @@ async fn system_receives_event(world: &mut SeaTraceWsWorld, cell: u64) {
 #[then(expr = "the WebSocket client should receive the event with MMSI {int}")]
 async fn ws_client_receives_event(world: &mut SeaTraceWsWorld, expected_mmsi: i64) {
     let ws = world.ws_stream.as_mut().unwrap();
-    
-    // Ждем сообщения (таймаут чтобы не висеть вечно, если тест сломался)
-    // Пропускаем контрольные сообщения (например, SubscribeAck)
+
     loop {
         let msg = tokio::time::timeout(std::time::Duration::from_secs(2), ws.next())
             .await
@@ -92,7 +96,6 @@ async fn ws_client_receives_event(world: &mut SeaTraceWsWorld, expected_mmsi: i6
             .expect("WebSocket error");
 
         if let Message::Text(text) = msg {
-            // Check if it's an ack/error message by peeking into JSON
             if let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) {
                 if let Some(msg_type) = value.get("type").and_then(|t| t.as_str()) {
                     if msg_type == "SubscribeAck" || msg_type == "Error" {
@@ -102,7 +105,7 @@ async fn ws_client_receives_event(world: &mut SeaTraceWsWorld, expected_mmsi: i6
             }
 
             let event: Event = serde_json::from_str(&text).expect(&format!("Failed to parse event JSON: {}", text));
-            
+
             match event.payload {
                 core_model::api::types::EventPayload::VesselPosition(pos) => {
                     assert_eq!(pos.mmsi, expected_mmsi, "MMSI mismatch on websocket");

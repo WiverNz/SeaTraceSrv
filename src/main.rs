@@ -29,7 +29,12 @@ async fn main() -> Result<()> {
     // ── Redis pool + vessel catalog ──────────────────────────────────────────
     let redis_url =
         std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
-    let state = create_app_state(broadcaster.clone(), &redis_url).await?;
+    let max_viewport_km: f64 = std::env::var("MAX_VIEWPORT_KM")
+        .unwrap_or_else(|_| "10".to_string())
+        .parse()
+        .expect("MAX_VIEWPORT_KM must be a valid number");
+    info!("Max viewport diagonal: {} km", max_viewport_km);
+    let state = create_app_state(broadcaster.clone(), &redis_url, max_viewport_km).await?;
 
     tokio::spawn(vessel_catalog::start_catalog_poller(state.clone()));
 

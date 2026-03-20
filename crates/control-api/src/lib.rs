@@ -32,9 +32,10 @@ pub fn create_router(state: AppState) -> Router {
 pub async fn create_app_state(
     broadcaster: Arc<dyn Broadcaster>,
     redis_url: &str,
+    max_viewport_km: f64,
 ) -> anyhow::Result<AppState> {
     let manager = bb8_redis::RedisConnectionManager::new(redis_url)?;
     let redis_pool = bb8::Pool::builder().build(manager).await?;
     let active_catalog_version = Arc::new(RwLock::new(None::<String>));
-    Ok(AppState::new(broadcaster, redis_pool, active_catalog_version))
+    Ok(AppState::new(broadcaster, redis_pool, active_catalog_version, max_viewport_km))
 }

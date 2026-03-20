@@ -37,7 +37,7 @@ private val json = Json { ignoreUnknownKeys = true }
  * Manages a persistent WebSocket connection to `<baseUrl>/realtime`.
  *
  * - Auto-reconnects with exponential back-off on failure.
- * - [updateCells] sends a new H3 subscription; if not yet connected, the
+ * - [updateViewport] sends a new viewport subscription; if not yet connected, the
  *   subscription is applied on the next successful open.
  * - Inject [scope] from the ViewModel's `viewModelScope` so cleanup is automatic.
  */
@@ -59,7 +59,7 @@ class SeaTraceWebSocket(
         .build()
 
     private var socket: WebSocket? = null
-    private var pendingCells: List<Long>? = null
+    private var pendingViewport: Viewport? = null
     private var reconnectDelay = INITIAL_RECONNECT_MS
     private var reconnectJob: Job? = null
 
@@ -78,13 +78,12 @@ class SeaTraceWebSocket(
     }
 
     /**
-     * Subscribe to a new set of H3 cells (resolution 7).
+     * Send a new viewport subscription to the server.
      * Replaces any previous subscription. Safe to call before connect().
-     * An empty list subscribes to ALL events (wildcard).
      */
-    fun updateCells(cells: List<Long>) {
-        pendingCells = cells
-        socket?.let { sendSubscription(it, cells) }
+    fun updateViewport(viewport: Viewport) {
+        pendingViewport = viewport
+        socket?.let { sendSubscription(it, viewport) }
     }
 
     // ── Private ───────────────────────────────────────────────────────────────
@@ -100,7 +99,7 @@ class SeaTraceWebSocket(
                 Log.i(TAG, "connected")
                 reconnectDelay = INITIAL_RECONNECT_MS
                 _state.value = WsState.Connected
-                pendingCells?.let { sendSubscription(ws, it) }
+                pendingViewport?.let { sendSubscription(ws, it) }
             }
 
             override fun onMessage(ws: WebSocket, text: String) {
@@ -130,10 +129,10 @@ class SeaTraceWebSocket(
         }
     }
 
-    private fun sendSubscription(ws: WebSocket, cells: List<Long>) {
-        val msg = json.encodeToString(SubscribeMessage(cells))
+    private fun sendSubscription(ws: WebSocket, viewport: Viewport) {
+        val msg = json.encodeToString(ViewportMessage(viewport))
         ws.send(msg)
-        Log.d(TAG, "sent subscription for ${cells.size} cells")
+        Log.d(TAG, "sent viewport subscription N=${viewport.north} S=${viewport.south} E=${viewport.east} W=${viewport.west}")
     }
 
     private fun parseMessage(text: String) {

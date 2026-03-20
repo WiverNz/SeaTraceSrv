@@ -57,7 +57,7 @@ async fn test_real_aisstream_data_e2e() {
     let port = listener.local_addr().unwrap().port();
     println!("Test server listening on port {}", port);
 
-    let state = create_app_state(broadcaster.clone(), "redis://127.0.0.1:6379")
+    let state = create_app_state(broadcaster.clone(), "redis://127.0.0.1:6379", 1_000_000.0)
         .await
         .expect("Failed to create AppState");
     let router = create_router(state);
@@ -84,12 +84,12 @@ async fn test_real_aisstream_data_e2e() {
         .await
         .expect("Failed to connect WebSocket client");
 
-    // Subscribe with empty cell list = wildcard subscription (receive ALL events)
-    // This is useful for E2E testing where we don't know which exact H3 cells will have traffic
-    println!("Subscribing with wildcard (all events)");
+    // Subscribe to the entire world viewport (E2E test — we don't know which region will
+    // have traffic, and max_viewport_km is set to 1_000_000 above so no size rejection).
+    println!("Subscribing to world viewport");
 
     let sub_msg = serde_json::json!({
-        "h3_cells": []
+        "viewport": { "north": 90.0, "south": -90.0, "east": 180.0, "west": -180.0 }
     });
     ws_stream
         .send(Message::Text(sub_msg.to_string()))
@@ -216,7 +216,7 @@ async fn test_health_endpoint_with_real_service() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
 
-    let state = create_app_state(broadcaster.clone(), "redis://127.0.0.1:6379")
+    let state = create_app_state(broadcaster.clone(), "redis://127.0.0.1:6379", 1_000_000.0)
         .await
         .expect("Failed to create AppState");
     let router = create_router(state);

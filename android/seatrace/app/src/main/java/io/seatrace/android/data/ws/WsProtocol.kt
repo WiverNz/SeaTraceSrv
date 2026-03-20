@@ -7,12 +7,24 @@ import kotlinx.serialization.json.JsonElement
 // ── Client → Server ───────────────────────────────────────────────────────────
 
 /**
- * Subscribe to a set of H3 cells (resolution 7, same as server indexing).
+ * Geographic bounding box sent to the server to establish a viewport subscription.
+ * Matches the server-side `Viewport` struct in the delivery crate.
+ */
+@Serializable
+data class Viewport(
+    val north: Double,
+    val south: Double,
+    val east: Double,
+    val west: Double,
+)
+
+/**
+ * Subscribe to vessel events within a visible map viewport.
  * Sending a new message replaces the previous subscription entirely.
  */
 @Serializable
-data class SubscribeMessage(
-    @SerialName("h3_cells") val h3Cells: List<Long>,
+data class ViewportMessage(
+    val viewport: Viewport,
 )
 
 // ── Server → Client ───────────────────────────────────────────────────────────

@@ -12,6 +12,9 @@ pub struct AppState {
     pub enricher_pipeline: EnrichmentPipeline,
     pub redis_pool: RedisPool,
     pub active_catalog_version: Arc<RwLock<Option<String>>>,
+    /// Maximum viewport diagonal in kilometres. Subscriptions exceeding this
+    /// limit are rejected by the WebSocket handler.
+    pub max_viewport_km: f64,
 }
 
 impl AppState {
@@ -19,6 +22,7 @@ impl AppState {
         broadcaster: Arc<dyn Broadcaster>,
         redis_pool: RedisPool,
         active_catalog_version: Arc<RwLock<Option<String>>>,
+        max_viewport_km: f64,
     ) -> Self {
         let weather_client = WeatherClient::new();
         let enricher_pipeline = EnrichmentPipeline::new().with(weather_client);
@@ -28,6 +32,7 @@ impl AppState {
             enricher_pipeline,
             redis_pool,
             active_catalog_version,
+            max_viewport_km,
         }
     }
 }

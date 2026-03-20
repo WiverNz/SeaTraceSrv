@@ -4,36 +4,28 @@ import android.app.Application
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.uber.h3core.H3Core
-import com.uber.h3core.util.LatLng
 import io.seatrace.android.BuildConfig
 import io.seatrace.android.data.model.Ship
 import io.seatrace.android.data.ws.SeaTraceWebSocket
+import io.seatrace.android.data.ws.Viewport
 import io.seatrace.android.data.ws.WsState
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import java.util.concurrent.ConcurrentHashMap
+import kotlin.math.asin
+import kotlin.math.cos
+import kotlin.math.pow
+import kotlin.math.sin
+import kotlin.math.sqrt
 
 private const val TAG = "MapViewModel"
-
-/**
- * H3 resolution used for indexing on the server (h3o resolution 7).
- * The client must subscribe at the same resolution.
- */
-private const val H3_RESOLUTION = 7
 
 /**
  * Stale ship threshold: ships not updated within this window are removed from the map.
  */
 private const val SHIP_TTL_MS = 5 * 60 * 1_000L // 5 minutes
-
-/**
- * When the viewport produces more H3 cells than this, fall back to the
- * server's wildcard subscription (empty cell list = receive ALL events)
- * to avoid overwhelming both client and server.
- */
-private const val MAX_H3_CELLS = 50_000
 
 data class LayerVisibility(
     val nauticalOverlay: Boolean = true,
@@ -55,27 +47,23 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
     private val _layers = MutableStateFlow(LayerVisibility())
     val layers: StateFlow<LayerVisibility> = _layers.asStateFlow()
 
-    // H3 is initialised lazily on a background thread the first time it is needed.
-    private var h3: H3Core? = null
-
     init {
-        val activeShips = java.util.concurrent.ConcurrentHashMap<Long, Ship>()
+        val activeShips = ConcurrentHashMap<Long, Ship>()
 
-        // Receive ship updates from WebSocket and accumulate them to avoid GC thrashing.
-        // The MapLibre map is only updated once per second instead of every single ship.
+        // Accumulate ship updates and flush to the StateFlow once per second.
         viewModelScope.launch {
             var updated = false
-            
+
             launch {
                 webSocket.ships.collect { ship ->
                     activeShips[ship.mmsi] = ship
                     updated = true
                 }
             }
-            
+
             launch {
                 while (true) {
-                    kotlinx.coroutines.delay(1000)
+                    kotlinx.coroutines.delay(1_000)
                     if (updated) {
                         _ships.value = activeShips.toMap()
                         updated = false
@@ -89,20 +77,12 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
             while (true) {
                 kotlinx.coroutines.delay(60_000)
                 val cutoff = System.currentTimeMillis() - SHIP_TTL_MS
-                
                 var evicted = false
-                val iterator = activeShips.iterator()
-                while (iterator.hasNext()) {
-                    val entry = iterator.next()
-                    if (entry.value.lastSeen < cutoff) {
-                        iterator.remove()
-                        evicted = true
-                    }
+                val it = activeShips.iterator()
+                while (it.hasNext()) {
+                    if (it.next().value.lastSeen < cutoff) { it.remove(); evicted = true }
                 }
-                
-                if (evicted) {
-                    _ships.value = activeShips.toMap()
-                }
+                if (evicted) _ships.value = activeShips.toMap()
             }
         }
 
@@ -128,48 +108,37 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
 
     /**
      * Called whenever the visible map region changes.
-     * Converts the bounding box to H3 cells and re-subscribes.
+     *
+     * Computes the viewport diagonal using the Haversine formula. If it exceeds
+     * [BuildConfig.MAX_VIEWPORT_KM] the subscription is skipped — the area is too
+     * large to load ships meaningfully. Otherwise the bounding box is forwarded to
+     * the server as a viewport subscription.
      */
-    private var lastCells: List<Long>? = null
-
     fun onViewportChanged(
         northLat: Double, southLat: Double,
         eastLon: Double,  westLon: Double,
     ) {
-        viewModelScope.launch {
-            val raw = computeH3Cells(northLat, southLat, eastLon, westLon)
-            // If the viewport is too large, use wildcard subscription.
-            val cells = if (raw.size > MAX_H3_CELLS) {
-                Log.d(TAG, "viewport has ${raw.size} cells — using wildcard subscription")
-                emptyList()
-            } else {
-                Log.d(TAG, "viewport → ${raw.size} H3 cells")
-                raw
-            }
-            if (cells != lastCells) {
-                lastCells = cells
-                webSocket.updateCells(cells)
-            }
+        val diagonalKm = haversineKm(southLat, westLon, northLat, eastLon)
+        if (diagonalKm > BuildConfig.MAX_VIEWPORT_KM) {
+            Log.d(TAG, "viewport ${diagonalKm.toInt()} km — too large, skipping ship load")
+            return
         }
-    }
-
-    private fun computeH3Cells(
-        northLat: Double, southLat: Double,
-        eastLon: Double,  westLon: Double,
-    ): List<Long> = try {
-        val core = h3 ?: H3Core.newSystemInstance().also { h3 = it }
-
-        // Bounding box as a closed polygon (counter-clockwise for H3 polyfill).
-        val ring = listOf(
-            LatLng(southLat, westLon), // Bottom-Left
-            LatLng(southLat, eastLon), // Bottom-Right
-            LatLng(northLat, eastLon), // Top-Right
-            LatLng(northLat, westLon), // Top-Left
-            LatLng(southLat, westLon), // Bottom-Left
+        Log.d(TAG, "viewport ${diagonalKm.toInt()} km — subscribing")
+        webSocket.updateViewport(
+            Viewport(north = northLat, south = southLat, east = eastLon, west = westLon)
         )
-        core.polygonToCells(ring, emptyList(), H3_RESOLUTION)
-    } catch (e: Throwable) {
-        Log.e(TAG, "H3 polyfill failed: ${e.message}")
-        emptyList()
     }
+
+    // ── Haversine ─────────────────────────────────────────────────────────────
+
+    private fun haversineKm(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
+        val r = 6_371.0
+        val dLat = (lat2 - lat1).toRad()
+        val dLon = (lon2 - lon1).toRad()
+        val a = sin(dLat / 2).pow(2) +
+                cos(lat1.toRad()) * cos(lat2.toRad()) * sin(dLon / 2).pow(2)
+        return r * 2 * asin(sqrt(a))
+    }
+
+    private fun Double.toRad() = this * Math.PI / 180.0
 }
