@@ -19,6 +19,7 @@ COPY crates/data-store/Cargo.toml     crates/data-store/Cargo.toml
 COPY crates/delivery/Cargo.toml       crates/delivery/Cargo.toml
 COPY crates/control-api/Cargo.toml    crates/control-api/Cargo.toml
 COPY crates/integration-tests/Cargo.toml crates/integration-tests/Cargo.toml
+COPY workers/catalog-worker/Cargo.toml   workers/catalog-worker/Cargo.toml
 
 # Stub out every lib/main so Cargo can resolve + cache all deps without sources.
 RUN mkdir -p src && echo 'fn main(){}' > src/main.rs && \
@@ -26,6 +27,7 @@ RUN mkdir -p src && echo 'fn main(){}' > src/main.rs && \
     mkdir -p crates/$crate/src && \
     echo 'pub fn _stub(){}' > crates/$crate/src/lib.rs; \
     done && \
+    mkdir -p workers/catalog-worker/src && echo 'fn main(){}' > workers/catalog-worker/src/main.rs && \
     # core-model has a build script that reads openapi.yaml — provide a minimal copy
     mkdir -p api-contracts
 
@@ -38,9 +40,10 @@ RUN cargo build --release --bin seatracesrv 2>/dev/null || true
 # Now copy all real source files
 COPY src/          src/
 COPY crates/       crates/
+COPY workers/      workers/
 
 # Touch to bust Cargo's incremental cache on stub files
-RUN touch src/main.rs crates/*/src/lib.rs
+RUN touch src/main.rs crates/*/src/lib.rs workers/catalog-worker/src/main.rs
 
 # Final release build
 RUN cargo build --release --bin seatracesrv
