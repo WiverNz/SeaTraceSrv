@@ -16,8 +16,8 @@ class ShipLayerManager(private val style: Style) {
 
     companion object {
         const val SOURCE_ID = "ships"
-        const val LAYER_CIRCLES = "ships-circles"
-        const val LAYER_LABELS  = "ships-labels"
+        const val LAYER_ARROWS = "ships-arrows"
+        const val LAYER_LABELS = "ships-labels"
     }
 
     /**
@@ -30,8 +30,8 @@ class ShipLayerManager(private val style: Style) {
                 Point.fromLngLat(ship.lon, ship.lat),
             ).also { feature ->
                 feature.addNumberProperty("mmsi", ship.mmsi)
-                // Label: show MMSI as a string so the style text-field can read it.
                 feature.addStringProperty("mmsi_label", ship.mmsi.toString())
+                ship.name?.let { feature.addStringProperty("name", it) }
                 ship.sog?.let { feature.addNumberProperty("sog", it) }
                 ship.cog?.let { feature.addNumberProperty("cog", it) }
             }
@@ -42,7 +42,7 @@ class ShipLayerManager(private val style: Style) {
     }
 
     fun setLayersVisible(visible: Boolean) {
-        listOf(LAYER_CIRCLES, LAYER_LABELS).forEach { layerId ->
+        listOf(LAYER_ARROWS, LAYER_LABELS).forEach { layerId ->
             style.getLayer(layerId)?.setProperties(
                 org.maplibre.android.style.layers.PropertyFactory.visibility(
                     if (visible) "visible" else "none"

@@ -17,4 +17,6 @@ data class Ship(
     val sog: Double?,
     val cog: Double?,
     val lastSeen: Long,
+    /** Vessel name from the server catalog, or null if unknown. */
+    val name: String? = null,
 )

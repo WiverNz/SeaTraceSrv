@@ -85,6 +85,22 @@ async fn handle_socket(mut socket: WebSocket, state: AppState) {
                             event_val.insert(k, v);
                         }
 
+                        // Inject vessel name from the catalog (cached in memory).
+                        let mmsi = event_val
+                            .get("payload")
+                            .and_then(|p| p.get("mmsi"))
+                            .and_then(|m| m.as_i64());
+                        if let Some(mmsi) = mmsi {
+                            if let Some(name) =
+                                crate::vessel_catalog::lookup_vessel_name(&state, mmsi).await
+                            {
+                                event_val.insert(
+                                    "vessel_name".to_string(),
+                                    serde_json::Value::String(name),
+                                );
+                            }
+                        }
+
                         if let Ok(json) = serde_json::to_string(&event_val) {
                             if socket.send(Message::Text(json.into())).await.is_err() {
                                 break;

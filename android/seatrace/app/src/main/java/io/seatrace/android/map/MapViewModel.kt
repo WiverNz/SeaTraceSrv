@@ -63,7 +63,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
 
             launch {
                 while (true) {
-                    kotlinx.coroutines.delay(1_000)
+                    kotlinx.coroutines.delay(300)
                     if (updated) {
                         _ships.value = activeShips.toMap()
                         updated = false

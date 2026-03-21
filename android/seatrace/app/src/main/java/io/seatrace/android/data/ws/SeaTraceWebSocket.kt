@@ -161,6 +161,7 @@ class SeaTraceWebSocket(
                         sog      = payload.sog,
                         cog      = payload.cog,
                         lastSeen = envelope.timestamp ?: System.currentTimeMillis(),
+                        name     = envelope.vesselName,
                     )
                     Log.d(TAG, "ship ${ship.mmsi} @ ${ship.lat},${ship.lon}")
                     scope.launch { _ships.emit(ship) }

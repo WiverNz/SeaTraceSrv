@@ -28,6 +28,8 @@ pub async fn start_catalog_poller(state: AppState) {
                 if cached.as_deref() != Some(new_version.as_str()) {
                     info!("Active vessel catalog version switched to: {}", new_version);
                     *cached = Some(new_version);
+                    // Invalidate the name cache so the new version's names are loaded fresh.
+                    state.vessel_name_cache.write().await.clear();
                 }
             }
             Ok(None) => {
@@ -92,4 +94,48 @@ pub async fn lookup_mmsi(state: &AppState, mmsi: i64) -> Option<Value> {
             None
         }
     }
+}
+
+/// Look up only the vessel name for a given MMSI, using an in-memory cache.
+///
+/// Returns `Some(name)` when the catalog has a non-empty name for this MMSI,
+/// `None` otherwise. Results are cached until the active catalog version changes.
+pub async fn lookup_vessel_name(state: &AppState, mmsi: i64) -> Option<String> {
+    // Fast path: check in-memory cache.
+    {
+        let cache = state.vessel_name_cache.read().await;
+        if let Some(cached) = cache.get(&mmsi) {
+            return cached.clone();
+        }
+    }
+
+    // Cache miss: resolve active version.
+    let version = {
+        let guard = state.active_catalog_version.read().await;
+        guard.clone()
+    }?;
+
+    // Single-field HGET — much cheaper than HGETALL.
+    let mut conn = match state.redis_pool.get().await {
+        Ok(c) => c,
+        Err(e) => {
+            warn!("vessel_name lookup: failed to get Redis connection: {}", e);
+            return None;
+        }
+    };
+    let key = format!("vessel_catalog:version:{}:mmsi:{}", version, mmsi);
+    let result: redis::RedisResult<Option<String>> = conn.hget(&key, "name").await;
+
+    let name = match result {
+        Ok(Some(n)) if !n.is_empty() => Some(n),
+        Ok(_) => None,
+        Err(e) => {
+            warn!("Redis HGET name failed for {}: {}", key, e);
+            None
+        }
+    };
+
+    // Store in cache (including None, to avoid repeated misses for unknown MMSIs).
+    state.vessel_name_cache.write().await.insert(mmsi, name.clone());
+    name
 }

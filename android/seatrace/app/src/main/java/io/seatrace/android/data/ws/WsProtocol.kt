@@ -45,6 +45,8 @@ data class ServerEnvelope(
     val source: String? = null,
     val confidence: Double? = null,
     val payload: JsonElement? = null,
+    /** Vessel name resolved from the server-side catalog, if available. */
+    @SerialName("vessel_name") val vesselName: String? = null,
 )
 
 /**

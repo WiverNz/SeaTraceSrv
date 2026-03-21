@@ -47,15 +47,22 @@
       }
     },
     {
-      "id": "ships-circles",
-      "type": "circle",
+      "id": "ships-arrows",
+      "type": "symbol",
       "source": "ships",
-      "layout": { "visibility": "visible" },
+      "layout": {
+        "visibility": "visible",
+        "text-field": "▲",
+        "text-size": 16,
+        "text-rotate": ["coalesce", ["get", "cog"], 0],
+        "text-rotation-alignment": "map",
+        "text-allow-overlap": true,
+        "text-ignore-placement": true
+      },
       "paint": {
-        "circle-radius": 6,
-        "circle-color": "#0066CC",
-        "circle-stroke-width": 1.5,
-        "circle-stroke-color": "#FFFFFF"
+        "text-color": "#0066CC",
+        "text-halo-color": "#FFFFFF",
+        "text-halo-width": 1
       }
     },
     {
@@ -64,9 +71,9 @@
       "source": "ships",
       "layout": {
         "visibility": "visible",
-        "text-field": ["get", "mmsi_label"],
+        "text-field": ["coalesce", ["get", "name"], ["get", "mmsi_label"]],
         "text-size": 10,
-        "text-offset": [0, 1.6],
+        "text-offset": [0, 1.8],
         "text-optional": true,
         "text-allow-overlap": false
       },

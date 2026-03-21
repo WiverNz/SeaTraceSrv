@@ -1,6 +1,7 @@
 use crate::enrichment::EnrichmentPipeline;
 use crate::weather::WeatherClient;
 use delivery::Broadcaster;
+use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -15,6 +16,10 @@ pub struct AppState {
     /// Maximum viewport diagonal in kilometres. Subscriptions exceeding this
     /// limit are rejected by the WebSocket handler.
     pub max_viewport_km: f64,
+    /// In-memory cache of MMSI → vessel name looked up from the Redis catalog.
+    /// `None` means the MMSI is not in the catalog. Cleared when the active
+    /// catalog version rotates.
+    pub vessel_name_cache: Arc<RwLock<HashMap<i64, Option<String>>>>,
 }
 
 impl AppState {
@@ -33,6 +38,7 @@ impl AppState {
             redis_pool,
             active_catalog_version,
             max_viewport_km,
+            vessel_name_cache: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 }

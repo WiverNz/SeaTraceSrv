@@ -102,7 +102,7 @@ class MainActivity : AppCompatActivity() {
                 val screenPoint = map.projection.toScreenLocation(latLng)
                 val features = map.queryRenderedFeatures(
                     screenPoint,
-                    ShipLayerManager.LAYER_CIRCLES,
+                    ShipLayerManager.LAYER_ARROWS,
                 )
                 if (features.isNotEmpty()) {
                     val mmsi = features.firstOrNull()?.getNumberProperty("mmsi")
