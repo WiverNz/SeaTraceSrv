@@ -30,8 +30,10 @@ import org.maplibre.android.location.engine.LocationEngineDefault
 import org.maplibre.android.location.engine.LocationEngineRequest
 import org.maplibre.android.location.engine.LocationEngineResult
 import org.maplibre.android.maps.MapLibreMap
+import androidx.core.content.res.ResourcesCompat
 import org.maplibre.android.maps.Style
 import org.maplibre.android.style.layers.PropertyFactory
+import org.maplibre.android.utils.BitmapUtils
 
 class MainActivity : AppCompatActivity() {
 
@@ -90,6 +92,11 @@ class MainActivity : AppCompatActivity() {
 
             val styleJson = assets.open("style_nautical.json").bufferedReader().readText()
             map.setStyle(Style.Builder().fromJson(styleJson)) { style ->
+                // Register the ship arrow icon so the "ships-arrows" symbol layer can use it.
+                ResourcesCompat.getDrawable(resources, R.drawable.ic_ship_arrow, theme)
+                    ?.let { BitmapUtils.getBitmapFromDrawable(it) }
+                    ?.let { style.addImage("ship-arrow", it) }
+
                 shipLayer = ShipLayerManager(style)
                 requestLocationPermission()
                 map.addOnCameraIdleListener { notifyViewport(map) }

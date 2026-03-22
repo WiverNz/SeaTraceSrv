@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Ship arrow: pointed bow at top, wider stern at bottom. Rotated by COG at runtime. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#0066CC"
+        android:pathData="M12,2 L20,20 L12,15 L4,20 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="0.5"
+        android:pathData="M12,4 L18.5,19 L12,14.5 L5.5,19 Z" />
+</vector>

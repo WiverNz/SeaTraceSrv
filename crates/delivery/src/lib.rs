@@ -51,6 +51,11 @@ fn event_location(event: &Event) -> Option<(f64, f64)> {
     Some((lat, lon))
 }
 
+fn event_mmsi(event: &Event) -> Option<i64> {
+    let val = serde_json::to_value(&event.payload).ok()?;
+    val.get("mmsi")?.as_i64()
+}
+
 /// Simple in-memory broadcaster for local development and tests.
 #[derive(Debug)]
 pub struct InMemoryBroadcaster {
@@ -58,6 +63,9 @@ pub struct InMemoryBroadcaster {
     clients: RwLock<HashMap<String, broadcast::Sender<Event>>>,
     /// Viewport per client. `None` means the client has not subscribed yet.
     viewports: RwLock<HashMap<String, Viewport>>,
+    /// Latest known position per MMSI. Replayed immediately to new subscribers
+    /// so ships appear without waiting for the next AIS update.
+    snapshot: RwLock<HashMap<i64, Event>>,
 }
 
 impl InMemoryBroadcaster {
@@ -65,6 +73,7 @@ impl InMemoryBroadcaster {
         Self {
             clients: RwLock::new(HashMap::new()),
             viewports: RwLock::new(HashMap::new()),
+            snapshot: RwLock::new(HashMap::new()),
         }
     }
 }
@@ -94,13 +103,28 @@ impl Broadcaster for InMemoryBroadcaster {
     }
 
     async fn update_subscription(&self, client_id: &str, viewport: Option<Viewport>) {
-        let mut vps = self.viewports.write().await;
         match viewport {
             Some(vp) => {
-                vps.insert(client_id.to_string(), vp);
+                // Replay the snapshot before updating the viewport so the client
+                // gets all ships currently in view without waiting for their next
+                // AIS update (which could take minutes for slow-reporting vessels).
+                {
+                    let snapshot = self.snapshot.read().await;
+                    let clients = self.clients.read().await;
+                    if let Some(tx) = clients.get(client_id) {
+                        for event in snapshot.values() {
+                            if let Some((lat, lon)) = event_location(event) {
+                                if vp.contains(lat, lon) {
+                                    let _ = tx.send(event.clone());
+                                }
+                            }
+                        }
+                    }
+                }
+                self.viewports.write().await.insert(client_id.to_string(), vp);
             }
             None => {
-                vps.remove(client_id);
+                self.viewports.write().await.remove(client_id);
             }
         }
     }
@@ -110,6 +134,11 @@ impl Broadcaster for InMemoryBroadcaster {
             Some(loc) => loc,
             None => return Ok(()), // No coordinates — nothing to route
         };
+
+        // Update the snapshot with the latest position for this vessel.
+        if let Some(mmsi) = event_mmsi(&event) {
+            self.snapshot.write().await.insert(mmsi, event.clone());
+        }
 
         let vps = self.viewports.read().await;
         let clients = self.clients.read().await;
