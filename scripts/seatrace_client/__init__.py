@@ -3,6 +3,8 @@ SeaTraceSrv Python Client
 """
 
 from .models import (
+    # Geographic section
+    Section,
     # LOD
     Lod,
     # Weather enrichment
@@ -26,6 +28,8 @@ from .client import SeaTraceClient, AsyncSeaTraceClient
 from .realtime import RealtimeClient, stream_events
 
 __all__ = [
+    # Geographic section
+    "Section",
     # LOD
     "Lod",
     # Weather enrichment

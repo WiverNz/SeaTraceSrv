@@ -10,6 +10,38 @@ from enum import Enum
 from typing import Optional, Union
 
 
+# ── Geographic section (bounding box) ────────────────────────────────────────
+
+@dataclass
+class Section:
+    """
+    Geographic bounding box sent to the server as a viewport subscription.
+
+    Coordinates in decimal degrees (WGS-84).
+    Handles the antimeridian: if west > east the box wraps around ±180°.
+    """
+    north: float
+    south: float
+    east: float
+    west: float
+
+    def contains(self, lat: float, lon: float) -> bool:
+        """Return True if (lat, lon) falls inside this section."""
+        if not (self.south <= lat <= self.north):
+            return False
+        if self.west <= self.east:
+            return self.west <= lon <= self.east
+        # antimeridian-crossing box
+        return lon >= self.west or lon <= self.east
+
+    def to_dict(self) -> dict:
+        return {"north": self.north, "south": self.south,
+                "east": self.east, "west": self.west}
+
+    def __str__(self) -> str:
+        return f"N={self.north} S={self.south} E={self.east} W={self.west}"
+
+
 # ── Level of Detail ──────────────────────────────────────────────────────────
 
 class Lod(str, Enum):

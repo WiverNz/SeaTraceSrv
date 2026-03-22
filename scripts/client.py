@@ -5,11 +5,12 @@ SeaTraceSrv Client CLI
 Connects to SeaTraceSrv and displays real-time vessel position events.
 
 Usage:
-    python client.py --host localhost --port 8080
-    python client.py stream --lod weather_current
-    python client.py stream --lod weather_current weather_hourly --cells 608431123508232191
+    python client.py stream --section 56.0 54.0 13.0 10.0
+    python client.py stream --section 56.0 54.0 13.0 10.0 --lod weather_current
     python client.py health --host localhost
     python client.py sources
+
+Section format: --section NORTH SOUTH EAST WEST  (decimal degrees)
 """
 
 import argparse
@@ -26,6 +27,7 @@ try:
         Event,
         VesselPosition,
         Lod,
+        Section,
     )
 except ImportError as e:
     print(f"Error importing seatrace_client: {e}")
@@ -89,16 +91,17 @@ async def stream_command(args):
     """Stream real-time events."""
     lod = [Lod(v) for v in args.lod] if args.lod else []
 
-    print(f"Connecting to ws://{args.host}:{args.port}/realtime...")
+    n, s, e, w = args.section
+    section = Section(north=n, south=s, east=e, west=w)
 
+    print(f"Connecting to ws://{args.host}:{args.port}/realtime...")
+    lod_str = ", ".join(l.value for l in lod) if lod else "vessels only"
+    print(f"Section: {section}  |  LOD: {lod_str}")
+
+    count = 0
     try:
         async with RealtimeClient(args.host, args.port) as client:
-            cells = args.cells if args.cells else []
-            await client.subscribe(cells, lod=lod or None)
-
-            mode = f"{len(cells)} cell(s)" if cells else "ALL (wildcard)"
-            lod_str = ", ".join(l.value for l in lod) if lod else "vessels only"
-            print(f"Subscribed to {mode}  |  LOD: {lod_str}")
+            await client.subscribe(section, lod=lod or None)
             print("-" * 80)
 
             if not args.verbose:
@@ -108,7 +111,6 @@ async def stream_command(args):
                 print(header)
                 print("-" * 80)
 
-            count = 0
             async for event in client:
                 count += 1
                 if args.verbose:
@@ -161,13 +163,14 @@ def main():
         parents=[connection_parser],
         epilog="""
 examples:
-  python client.py stream
-  python client.py stream --host asgard.fritz.box --port 8080
-  python client.py stream --lod weather_current
-  python client.py stream --lod weather_current weather_hourly --verbose
-  python client.py stream --cells 608431123508232191 --lod weather_current
+  python client.py stream --section 56.0 54.0 13.0 10.0
+  python client.py stream --section 56.0 54.0 13.0 10.0 --lod weather_current
+  python client.py stream --section 56.0 54.0 13.0 10.0 --lod weather_current weather_hourly --verbose
   python client.py health
   python client.py sources
+
+section format: NORTH SOUTH EAST WEST (decimal degrees)
+  example Baltic Sea: --section 56.0 54.0 13.0 10.0
         """,
     )
 
@@ -177,8 +180,9 @@ examples:
     stream_parser = subparsers.add_parser("stream", help="Stream real-time events",
                                          parents=[connection_parser])
     stream_parser.add_argument(
-        "--cells", "-c", type=int, nargs="*", default=[],
-        help="H3 cell indices to subscribe to (empty = all events)",
+        "--section", "-s", type=float, nargs=4, required=True,
+        metavar=("NORTH", "SOUTH", "EAST", "WEST"),
+        help="Geographic bounding box in decimal degrees: NORTH SOUTH EAST WEST",
     )
     stream_parser.add_argument(
         "--lod", "-l",
@@ -207,11 +211,8 @@ examples:
     args = parser.parse_args()
 
     if args.command is None:
-        args.command = "stream"
-        args.cells = []
-        args.lod = []
-        args.verbose = False
-        args.max_events = None
+        parser.print_help()
+        sys.exit(0)
 
     print("SeaTraceSrv Client")
     print("=" * 80)

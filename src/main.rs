@@ -23,7 +23,35 @@ async fn main() -> Result<()> {
     let api_key = std::env::var("AISSTREAM_API_KEY")
         .expect("AISSTREAM_API_KEY environment variable must be set");
 
-    let ais_config = AisStreamConfig::world(api_key);
+    // Optional bounding box for the AISStream subscription.
+    // Format: "NORTH,SOUTH,EAST,WEST" in decimal degrees.
+    // Defaults to the whole world when not set.
+    let ais_config = match std::env::var("AIS_BOUNDING_BOX") {
+        Ok(bb) => {
+            let parts: Vec<f64> = bb
+                .split(',')
+                .filter_map(|s| s.trim().parse().ok())
+                .collect();
+            if parts.len() == 4 {
+                let (north, south, east, west) = (parts[0], parts[1], parts[2], parts[3]);
+                info!(
+                    "AISStream subscription restricted to bounding box: \
+                     N={north} S={south} E={east} W={west}"
+                );
+                AisStreamConfig::with_bbox(api_key, north, south, east, west)
+            } else {
+                tracing::warn!(
+                    "AIS_BOUNDING_BOX must be 'NORTH,SOUTH,EAST,WEST' — \
+                     falling back to world subscription"
+                );
+                AisStreamConfig::world(api_key)
+            }
+        }
+        Err(_) => {
+            info!("AIS_BOUNDING_BOX not set — subscribing to the whole world");
+            AisStreamConfig::world(api_key)
+        }
+    };
     let connector = AisStreamConnector::new(ais_config, broadcaster.clone());
 
     // ── Redis pool + vessel catalog ──────────────────────────────────────────

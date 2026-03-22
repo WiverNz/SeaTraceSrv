@@ -105,6 +105,23 @@ impl AisStreamConfig {
             h3_resolution: Resolution::Seven,
         }
     }
+
+    /// Create a config restricted to a geographic bounding box.
+    /// Coordinates in decimal degrees (WGS-84).
+    /// AISStream format per box: `[[south, west], [north, east]]`.
+    pub fn with_bbox(
+        api_key: impl Into<String>,
+        north: f64,
+        south: f64,
+        east: f64,
+        west: f64,
+    ) -> Self {
+        Self {
+            api_key: api_key.into(),
+            bounding_boxes: vec![vec![[south, west], [north, east]]],
+            h3_resolution: Resolution::Seven,
+        }
+    }
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
