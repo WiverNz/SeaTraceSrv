@@ -1,3 +1,8 @@
+<p align="center">
+  <img src="preview.png" width="800"
+       alt="SeaTraceSrv Android app showing live AIS vessels on an OpenSeaMap nautical chart">
+</p>
+
 # SeaTraceSrv
 
 Real-time maritime vessel tracking system. Ingests AIS data, enriches vessel events, and streams them to clients over WebSocket. Ships are identified by a versioned Redis vessel catalog rebuilt by a dedicated worker. A native Android app renders vessels on an OpenSeaMap nautical chart.
